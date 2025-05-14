@@ -1,9 +1,18 @@
 # /src/response_body_verification/constraint_inference.py
 
-from utils.openapi_utils import *
-from utils.gptcall import GPTChatCompletion
 import re
 import json
+import os
+import copy
+import yaml
+from utils.openapi_utils import (
+    load_openapi,
+    simplify_openapi,
+    get_simplified_schema,
+    get_relevent_response_schemas_of_operation,
+    extract_operations,
+)
+from utils.gptcall import GPTChatCompletion
 from constant import (
     DESCRIPTION_OBSERVATION_PROMPT,
     NAIVE_CONSTRAINT_DETECTION_PROMPT,

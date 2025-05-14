@@ -1,17 +1,27 @@
 # /src/constraints_test_generation.py
 
+import re
+import os
+import json
+import dotenv
 import pandas as pd
-from utils.openapi_utils import *
+import urllib.parse
+import openai
+import yaml
+from utils.openapi_utils import (
+    load_openapi,
+    simplify_openapi,
+    get_simplified_schema,
+    get_response_body_name_and_type,
+)
 from utils.gptcall import GPTChatCompletion
 from utils.dict_utils import filter_dict_by_key
-import openai
 from constant import (
     CONST_INSIDE_RESPONSEBODY_SCRIPT_GEN_PROMPT,
     CONST_RESPONSEBODY_PARAM_SCRIPT_GEN_PROMPT,
+    TEST_EXECUTION_SCRIPT,
+    TEST_INPUT_PARAM_EXECUTION_SCRIPT,
 )
-from constant import TEST_EXECUTION_SCRIPT, TEST_INPUT_PARAM_EXECUTION_SCRIPT
-
-import os, dotenv
 
 dotenv.load_dotenv()
 openai.api_key = os.getenv("OPENAI_KEY")
@@ -39,9 +49,6 @@ def unescape_string(escaped_str):
         return bytes(escaped_str, "utf-8").decode("unicode_escape")
     except:
         return escaped_str
-
-
-import urllib.parse
 
 
 def is_valid_url(url):

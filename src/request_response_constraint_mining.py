@@ -1,14 +1,15 @@
 # /src/request_response_constraint_mining.py
 
-# Thông qua input parameter
-from response_body_verification.data_model_buiding import *
-from response_body_verification.constraint_inference import *
-from response_body_verification.parameter_responsebody_mapping import *
-from utils.excel_utils import convert_json_to_excel_response_property_constraints
-import openai
-
 import os
+import json
 import dotenv
+import openai
+from response_body_verification.constraint_inference import ConstraintExtractor
+from response_body_verification.parameter_responsebody_mapping import (
+    ParameterResponseMapper,
+)
+from utils.openapi_utils import load_openapi
+from utils.excel_utils import convert_json_to_excel_response_property_constraints
 
 dotenv.load_dotenv()
 openai.api_key = os.getenv("OPENAI_KEY")
@@ -44,8 +45,9 @@ def main():
         constraint_extractor.get_input_parameter_constraints(outfile=outfile)
         with open(f"{experiment_folder}/{service_name}/input_parameter.json", "w") as f:
             json.dump(constraint_extractor.input_parameter_constraints, f, indent=2)
-        outfile = f"{
-            experiment_folder}/{service_name}/request_response_constraints.json"
+        outfile = (
+            f"{experiment_folder}/{service_name}/request_response_constraints.json"
+        )
         parameterResponseMapper = ParameterResponseMapper(
             openapi_path, save_and_load=False, outfile=outfile
         )

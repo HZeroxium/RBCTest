@@ -1,7 +1,15 @@
 # /src/response_body_verification/parameter_responsebody_mapping.py
 
 import re
-from utils.openapi_utils import *
+import json
+import os
+import copy
+from utils.openapi_utils import (
+    load_openapi,
+    get_simplified_schema,
+    simplify_openapi,
+    get_relevant_schemas_of_operation,
+)
 from utils.gptcall import GPTChatCompletion
 from constant import (
     PARAMETER_OBSERVATION,

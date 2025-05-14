@@ -1,7 +1,13 @@
 # /src/response_body_verification/data_model_buiding.py
 
 import json
-from utils.openapi_utils import *
+import re
+from utils.openapi_utils import (
+    load_openapi,
+    get_operation_params,
+    get_simplified_schema,
+    get_relevant_schemas_of_operation,
+)
 from utils.gptcall import GPTChatCompletion
 from constant import FIND_SCHEMA_KEYS, DATA_MODEL_PROMPT
 
