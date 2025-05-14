@@ -11,7 +11,7 @@ to determine if the constraints are satisfied.
 import os
 import random
 import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple
+from typing import List, Optional
 
 from verifier.find_example_utils import find_example_value, load_openapi_spec
 from utils.verification_utils import (
@@ -19,6 +19,9 @@ from utils.verification_utils import (
     request_response_constraint_verify,
 )
 from utils.execution_utils import get_api_responses
+from utils.openapi_example_finder import (
+    load_openapi_spec,
+)
 from models.verification_models import (
     VerificationConfig,
     ConstraintVerificationResult,

@@ -7,7 +7,7 @@ This module defines Pydantic models for representing constraints in REST APIs,
 including parameter and response constraints extracted from OpenAPI specifications.
 """
 
-from typing import Dict, List, Optional, Any, Set, Union
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
 

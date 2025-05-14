@@ -7,10 +7,9 @@ This module defines Pydantic models used for data model building
 and schema relationship analysis.
 """
 
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
+from typing import Dict, List, Tuple, Optional, Set, Any
 from pydantic import BaseModel, Field, field_validator
 import os
-import json
 
 
 class SchemaKeyPair(BaseModel):

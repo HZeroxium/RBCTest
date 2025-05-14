@@ -6,7 +6,7 @@ Verification Script Models
 This module defines Pydantic models for verification script generation and execution.
 """
 
-from typing import Dict, List, Optional, Literal, Any, Union
+from typing import Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 import os
 
