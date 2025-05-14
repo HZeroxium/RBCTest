@@ -4,7 +4,6 @@ api_spec_folder = r"RBCTest_dataset"
 import json
 import os
 import random
-import re
 import pandas as pd
 import uuid
 from verifier.find_example_utils import find_example_value, load_openapi_spec
