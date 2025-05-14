@@ -1,0 +1,57 @@
+{
+  "api_info": {
+    "title": "Book Management API",
+    "version": "1.0.0"
+  },
+  "operations": [
+    "post-/auth/login",
+    "get-/books",
+    "post-/books",
+    "get-/books/{bookId}",
+    "put-/books/{bookId}",
+    "delete-/books/{bookId}",
+    "get-/books/search",
+    "get-/health"
+  ],
+  "operation_params_example": {
+    "tags": [
+      "Authentication"
+    ],
+    "summary": "Authenticate a user",
+    "description": "Exchange credentials for an access token",
+    "requestBody": {
+      "username": "string",
+      "password": "string"
+    },
+    "responseBody": {
+      "schema of Token": {
+        "access_token": "string",
+        "token_type": "string",
+        "expires_in": "integer"
+      }
+    }
+  },
+  "required_fields_example": {
+    "requestBody": {
+      "username": "string",
+      "password": "string"
+    }
+  },
+  "simplified_schema_example": {
+    "access_token": "string",
+    "token_type": "string",
+    "expires_in": "integer (description: Expiration time in seconds)"
+  },
+  "schema_operations_relationships": {
+    "Token": [
+      "post-/auth/login"
+    ],
+    "Book": [
+      "get-/books",
+      "post-/books",
+      "get-/books/{bookId}",
+      "put-/books/{bookId}",
+      "get-/books/search"
+    ]
+  }
+}

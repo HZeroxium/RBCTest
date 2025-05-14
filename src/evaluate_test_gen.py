@@ -1,11 +1,13 @@
+# /src/evaluate_test_gen.py
+
 import os
 import pandas as pd
-import openpyxl
+
 
 def categorize_constraint(excel_file, knowledge_base_file):
     print(f"Categoryzing {excel_file}")
-    df = pd.read_excel(excel_file, engine='openpyxl')
-    kb_df = pd.read_excel(knowledge_base_file, engine='openpyxl')
+    df = pd.read_excel(excel_file, engine="openpyxl")
+    kb_df = pd.read_excel(knowledge_base_file, engine="openpyxl")
     if df.empty or kb_df.empty:
         return
     for row, data in df.iterrows():
@@ -24,17 +26,19 @@ def categorize_constraint(excel_file, knowledge_base_file):
 
     df.to_excel(excel_file, index=False)
 
-        
 
 def summarize_test_gen_response(excel_file, summary_dict, api_name):
     global all_description
     print(f"Excel file: {excel_file}")
     # read excel file and make sure it is read as string
-    df = pd.read_excel(excel_file, engine='openpyxl', dtype=str)
+    df = pd.read_excel(excel_file, engine="openpyxl", dtype=str)
     if df.empty:
         return summary_dict, pd.DataFrame()
     # filter TP constraints
-    if "constraint_correctness" not in df.columns or "correctness_of_script" not in df.columns:
+    if (
+        "constraint_correctness" not in df.columns
+        or "correctness_of_script" not in df.columns
+    ):
         print(f"Excel file {excel_file} does not have column constraint_correctness")
         return summary_dict, pd.DataFrame()
     tp_df = df[df["constraint_correctness"] == "TP"]
@@ -56,7 +60,7 @@ def summarize_test_gen_response(excel_file, summary_dict, api_name):
         "correct": len(correct_df),
         "TP_satisfied": len(truely_satisfied_df),
         "TP_mismatched": len(truely_mismatched_df),
-        "unknown": len(truely_unknown_df)
+        "unknown": len(truely_unknown_df),
     }
 
     api_path = os.path.dirname(excel_file)
@@ -65,11 +69,7 @@ def summarize_test_gen_response(excel_file, summary_dict, api_name):
 
     truely_mismatched_df["API"] = api_name
 
-
     return summary_dict, truely_mismatched_df
-    
-
-
 
 
 if __name__ == "__main__":
@@ -80,10 +80,12 @@ if __name__ == "__main__":
     api_names = []
     all_true_mismatched = pd.DataFrame()
 
-    apis = [api for api in os.listdir(root_exp) if os.path.isdir(
-        os.path.join(root_exp, api)) and not api.startswith(".")]
+    apis = [
+        api
+        for api in os.listdir(root_exp)
+        if os.path.isdir(os.path.join(root_exp, api)) and not api.startswith(".")
+    ]
     apis.sort()
-    
 
     for api in apis:
         # if "Canada" in api:
@@ -91,13 +93,15 @@ if __name__ == "__main__":
         api_name = api.replace(" API", "")
         api_names.append(api_name)
         api_path = os.path.join(root_exp, api)
-        excel_files = [f for f in os.listdir(api_path) if f.endswith(
-            ".xlsx") and not f.startswith("~$") and not f.startswith(".")]
+        excel_files = [
+            f
+            for f in os.listdir(api_path)
+            if f.endswith(".xlsx") and not f.startswith("~$") and not f.startswith(".")
+        ]
         print(f"API: {api}")
 
         response_excel = None
-        request_excel = None 
-
+        request_excel = None
 
         response_excel = os.path.join(api_path, "response_property_constraints.xlsx")
         request_excel = os.path.join(api_path, "request_response_constraints.xlsx")
@@ -105,14 +109,20 @@ if __name__ == "__main__":
         print(f"Found files: {response_excel}, {request_excel}")
 
         if os.path.exists(response_excel):
-            summarize_test_gen_for_response, true_mismatched = summarize_test_gen_response(response_excel, summarize_test_gen_for_response, api_name)
+            summarize_test_gen_for_response, true_mismatched = (
+                summarize_test_gen_response(
+                    response_excel, summarize_test_gen_for_response, api_name
+                )
+            )
             all_true_mismatched = pd.concat([all_true_mismatched, true_mismatched])
 
         if os.path.exists(request_excel):
-            summarize_test_gen_for_request, true_mismatched = summarize_test_gen_response(request_excel, summarize_test_gen_for_request, api_name)
+            summarize_test_gen_for_request, true_mismatched = (
+                summarize_test_gen_response(
+                    request_excel, summarize_test_gen_for_request, api_name
+                )
+            )
             all_true_mismatched = pd.concat([all_true_mismatched, true_mismatched])
-
-        
 
     # add a row for total and average precision
     total_request = {
@@ -123,7 +133,7 @@ if __name__ == "__main__":
         "FP_satisfied": 0,
         "TP_mismatched": 0,
         "FP_mismatched": 0,
-        "unknown": 0
+        "unknown": 0,
     }
     total_response = {
         "All": 0,
@@ -133,7 +143,7 @@ if __name__ == "__main__":
         "FP_satisfied": 0,
         "TP_mismatched": 0,
         "FP_mismatched": 0,
-        "unknown": 0
+        "unknown": 0,
     }
     for api in api_names:
         if api not in summarize_test_gen_for_response:
@@ -145,7 +155,7 @@ if __name__ == "__main__":
                 "FP_satisfied": 0,
                 "TP_mismatched": 0,
                 "FP_mismatched": 0,
-                "unknown": 0
+                "unknown": 0,
             }
         else:
             for key in summarize_test_gen_for_response[api]:
@@ -160,7 +170,7 @@ if __name__ == "__main__":
                 "FP_satisfied": 0,
                 "TP_mismatched": 0,
                 "FP_mismatched": 0,
-                "unknown": 0
+                "unknown": 0,
             }
         else:
             for key in summarize_test_gen_for_request[api]:
@@ -168,27 +178,21 @@ if __name__ == "__main__":
     summarize_test_gen_for_response["Total"] = total_response
     summarize_test_gen_for_request["Total"] = total_request
 
-    
-
     with pd.ExcelWriter(f"{root_exp}/test_gen_summary.xlsx") as writer:
-        df = pd.DataFrame.from_dict(summarize_test_gen_for_response, orient='index')
+        df = pd.DataFrame.from_dict(summarize_test_gen_for_response, orient="index")
         df.sort_index(inplace=True)
         # remove col FP_satisfied and FP_mismatched
         df.drop(columns=["FP_satisfied", "FP_mismatched"], inplace=True)
 
-        df.to_excel(writer, sheet_name='response')
+        df.to_excel(writer, sheet_name="response")
 
-        df = pd.DataFrame.from_dict(summarize_test_gen_for_request, orient='index')
+        df = pd.DataFrame.from_dict(summarize_test_gen_for_request, orient="index")
         df.sort_index(inplace=True)
         # remove col FP_satisfied and FP_mismatched
         df.drop(columns=["FP_satisfied", "FP_mismatched"], inplace=True)
 
-        df.to_excel(writer, sheet_name='request')
+        df.to_excel(writer, sheet_name="request")
 
-        all_true_mismatched.to_excel(writer, sheet_name='all_true_mismatched')
+        all_true_mismatched.to_excel(writer, sheet_name="all_true_mismatched")
 
-
-
-
-            
     print("Done!")

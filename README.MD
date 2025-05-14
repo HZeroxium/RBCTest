@@ -15,6 +15,7 @@ This repository contains the resources and code related to the paper "Combining 
 ### Environment Setup
 
 1. Install the required packages:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -28,6 +29,7 @@ This repository contains the resources and code related to the paper "Combining 
 ### Constraint Mining
 
 1. **Request-Response Constraints:**
+
    - For our approach:
      ```bash
      python src/request_response_constraint_mining.py
@@ -57,6 +59,7 @@ This repository contains the resources and code related to the paper "Combining 
 ## Evaluation
 
 - To re-evaluate constraints mining, run:
+
   ```bash
   python src/evaluate_constraints_mining.py
   ```
@@ -69,23 +72,27 @@ This repository contains the resources and code related to the paper "Combining 
 ## Experimental Results
 
 ### RQ1.1 Results on AGORA Dataset
+
 - All Dynamic (AGORA) detected invariants: [`AGORA-eval/agora_all.xlsx`](AGORA-eval/agora_all.xlsx)
 - All Static (LLM-based) detected constraints: see sub-folders in [`approaches/rbctest_agora_data`](approaches/rbctest_agora_data)
 - Overlapping analysis: [`AGORA-eval/overlapping_analysis_all.xlsx`](AGORA-eval/overlapping_analysis_all.xlsx)
 
 **Annotation:**
+
 - `s`: Static constraint is better
 - `d`: Dynamic invariant is better
 - `=`: Equivalent constraint
 
 ### RQ1.2, RQ2, RQ3 Results on RBCTest Dataset
+
 - Results Analysis: [`approach_evaluation_test_gen.csv`](approaches/rbctest_agora_data/approach_evaluation_test_gen.csv)
 - Details: see [`approaches/rbctest_our_data`](approaches/rbctest_our_data) (each subfolder is an API-under-test)
 
 ### RQ4 Usefulness
+
 - Results Analysis: [`test_outcomes_analyze.csv`](approaches/rbctest_our_data/test_outcomes_analyze.csv)
-- Detected mismatches: [`all_mismatches.xlsx`](approaches/rbctest_our_data/all_mismatches.xlsx) 
+- Detected mismatches: [`all_mismatches.xlsx`](approaches/rbctest_our_data/all_mismatches.xlsx)
 
 ### RQ5 Ablation
-- Ablation study: see [`approaches/ablation`](approaches/ablation)
 
+- Ablation study: see [`approaches/ablation`](approaches/ablation)

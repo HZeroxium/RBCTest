@@ -2,21 +2,21 @@ import re
 from utils.openapi_utils import *
 from utils.gptcall import GPTChatCompletion
 
-PARAMETER_OBSERVATION = '''Given the specification of an input parameter for a REST API, your responsibility is to provide a brief observation of that parameter.
+PARAMETER_OBSERVATION = """Given the specification of an input parameter for a REST API, your responsibility is to provide a brief observation of that parameter.
 
 Below is the input parameter of the operation {method} {endpoint}:
 - "{attribute}": "{description}"
-'''
+"""
 
-SCHEMA_OBSERVATION = '''\
+SCHEMA_OBSERVATION = """\
 Given a schema in an OpenAPI Specification for a RESTful API service, your responsibility is to briefly explain the meaning of each attribute specified in the provided schema.
 
 Below is the schema's specification:
 - Schema name: "{schema}"
 - Specification: {specification}
-'''
+"""
 
-PARAMETER_SCHEMA_MAPPING_PROMPT = '''Given an input parameter and an API response schema, your responsibility is to check whether there is a corresponding attribute in the API response schema.
+PARAMETER_SCHEMA_MAPPING_PROMPT = """Given an input parameter and an API response schema, your responsibility is to check whether there is a corresponding attribute in the API response schema.
 
 Below is the input parameter of the operation {method} {endpoint}:
 - "{attribute}": "{description}"
@@ -49,9 +49,9 @@ Let's identify all corresponding attributes name of the provided input parameter
 ```corresponding attribute
 just respond corresponding attribute's name here (without any explanation)
 ```
-'''
+"""
 
-NAIVE_PARAMETER_SCHEMA_MAPPING_PROMPT = '''Given an input parameter and an API response schema, your responsibility is to check whether there is a corresponding attribute in the API response schema.
+NAIVE_PARAMETER_SCHEMA_MAPPING_PROMPT = """Given an input parameter and an API response schema, your responsibility is to check whether there is a corresponding attribute in the API response schema.
 
 Below is the input parameter of the operation {method} {endpoint}:
 - "{attribute}": "{description}"
@@ -82,10 +82,10 @@ Let's identify all corresponding attributes name of the provided input parameter
 ```corresponding attribute
 just respond corresponding attribute's name here (without any explanation)
 ```
-'''
+"""
 
 
-MAPPING_CONFIRMATION = '''Given an input parameter of a REST API and an identified equivalent attribute in an API response schema, your responsibility is to check that the mapping is correct.
+MAPPING_CONFIRMATION = """Given an input parameter of a REST API and an identified equivalent attribute in an API response schema, your responsibility is to check that the mapping is correct.
 
 The input parameter's information:
 - Operation: {method} {endpoint}
@@ -109,7 +109,7 @@ The last response should follow the format of triple backticks below:
 ```answer
 just respond: correct/incorrect
 ```
-'''
+"""
 
 
 def extract_answer(response):
@@ -117,7 +117,7 @@ def extract_answer(response):
         return ""
 
     if "```answer" in response:
-        pattern = r'```answer\n(.*?)```'
+        pattern = r"```answer\n(.*?)```"
         match = re.search(pattern, response, re.DOTALL)
 
         if match:
@@ -133,12 +133,12 @@ def extract_coresponding_attribute(response):
     if response is None:
         return ""
 
-    pattern = r'```corresponding attribute\n(.*?)```'
+    pattern = r"```corresponding attribute\n(.*?)```"
     match = re.search(pattern, response, re.DOTALL)
 
     if match:
         answer = match.group(1)
-        return answer.strip().replace('"', '').replace('\'', "")
+        return answer.strip().replace('"', "").replace("'", "")
     else:
         return ""
 
@@ -166,14 +166,16 @@ def filter_attributes_in_schema_by_data_type(schema_spec, filterring_data_type):
         #     continue
         if isinstance(value, dict):
             value = filter_attributes_in_schema_by_data_type(
-                value, filterring_data_type)
+                value, filterring_data_type
+            )
             if not value:
                 del specification[attribute]
                 continue
             specification[attribute] = value
         elif isinstance(value, list):
             value = filter_attributes_in_schema_by_data_type(
-                value[0], filterring_data_type)
+                value[0], filterring_data_type
+            )
             if not value:
                 del specification[attribute]
                 continue
@@ -183,6 +185,7 @@ def filter_attributes_in_schema_by_data_type(schema_spec, filterring_data_type):
             if data_type != filterring_data_type:
                 del specification[attribute]
     return specification
+
 
 def verify_attribute_in_schema(schema_spec, attribute):
     for key, value in schema_spec.items():
@@ -196,6 +199,7 @@ def verify_attribute_in_schema(schema_spec, attribute):
                 return True
     return False
 
+
 def find_common_fields(json1, json2):
     common_fields = []
     for key in json1.keys():
@@ -205,11 +209,20 @@ def find_common_fields(json1, json2):
 
 
 class ParameterResponseMapper:
-    def __init__(self, openapi_path, except_attributes_found_constraints_inside_response_body=False, 
-                 save_and_load=False, list_of_available_schemas=None, 
-                 outfile=None, experiment_folder="experiment_our", is_naive=False):
+    def __init__(
+        self,
+        openapi_path,
+        except_attributes_found_constraints_inside_response_body=False,
+        save_and_load=False,
+        list_of_available_schemas=None,
+        outfile=None,
+        experiment_folder="experiment_our",
+        is_naive=False,
+    ):
         self.openapi_spec = load_openapi(openapi_path)
-        self.except_attributes_found_constraints = except_attributes_found_constraints_inside_response_body
+        self.except_attributes_found_constraints = (
+            except_attributes_found_constraints_inside_response_body
+        )
         self.save_and_load = save_and_load
         self.list_of_available_schemas = list_of_available_schemas
         self.outfile = outfile
@@ -222,17 +235,25 @@ class ParameterResponseMapper:
             self.mapping_response_bodies_to_input_parameters()
 
     def initialize(self):
-        self.service_name = self.openapi_spec['info']['title']
+        self.service_name = self.openapi_spec["info"]["title"]
         self.simplified_schemas = get_simplified_schema(self.openapi_spec)
         self.simplified_openapi = simplify_openapi(self.openapi_spec)
 
-        self.input_parameter_constraints = json.load(open(
-            f"{self.experiment_folder}/{self.service_name}/input_parameter.json", "r"))
+        self.input_parameter_constraints = json.load(
+            open(
+                f"{self.experiment_folder}/{self.service_name}/input_parameter.json",
+                "r",
+            )
+        )
         # input(f"Input parameter constraints: {self.input_parameter_constraints}")
 
         if self.except_attributes_found_constraints:
-            self.inside_response_body_constraints = json.load(open(
-                f"{self.experiment_folder}/{self.service_name}/response_property_constraints.json", "r"))
+            self.inside_response_body_constraints = json.load(
+                open(
+                    f"{self.experiment_folder}/{self.service_name}/response_property_constraints.json",
+                    "r",
+                )
+            )
 
         self.found_mappings = []
         if self.save_and_load:
@@ -260,59 +281,84 @@ class ParameterResponseMapper:
         for operation in self.operation_param_w_descr:
             self.operations_containing_param_w_description[operation] = {}
             if "summary" in self.operation_param_w_descr[operation]:
-                self.operations_containing_param_w_description[operation][
-                    "summary"] = self.operation_param_w_descr[operation]["summary"]
+                self.operations_containing_param_w_description[operation]["summary"] = (
+                    self.operation_param_w_descr[operation]["summary"]
+                )
 
             parts = ["parameters", "requestBody"]
             for part in parts:
-                if self.operation_param_w_descr.get(operation, {}).get(part, None) is not None:
-                    self.operations_containing_param_w_description[operation][part] = {
-                    }
+                if (
+                    self.operation_param_w_descr.get(operation, {}).get(part, None)
+                    is not None
+                ):
+                    self.operations_containing_param_w_description[operation][part] = {}
                     if isinstance(self.operation_param_w_descr[operation][part], dict):
-                        for param, value in self.operation_param_w_descr[operation][part].items():
+                        for param, value in self.operation_param_w_descr[operation][
+                            part
+                        ].items():
                             if "(description:" in value:
-                                self.operations_containing_param_w_description[operation][part][param] = value
+                                self.operations_containing_param_w_description[
+                                    operation
+                                ][part][param] = value
 
     def foundMapping(self, input_parameter, description, schema):
         for mapping in self.found_mappings:
-            if mapping[0] == input_parameter and mapping[1] == description and mapping[2] == schema:
+            if (
+                mapping[0] == input_parameter
+                and mapping[1] == description
+                and mapping[2] == schema
+            ):
                 return mapping
         return None
 
     def exclude_attributes_found_constraint(self, schema):
-        return {key: value for key, value in self.simplified_schemas[schema].items() if key not in self.inside_response_body_constraints.get(schema, {})}
+        return {
+            key: value
+            for key, value in self.simplified_schemas[schema].items()
+            if key not in self.inside_response_body_constraints.get(schema, {})
+        }
 
     def mapping_response_bodies_to_input_parameters(self):
         print(f"\nMapping input parameters to response schemas...")
         self.response_body_input_parameter_mappings = {}
 
-        progress_size = 2 * \
-            len(self.input_parameter_constraints)*len(self.list_of_schemas)
+        progress_size = (
+            2 * len(self.input_parameter_constraints) * len(self.list_of_schemas)
+        )
         completed = 0
         # input(f"List of schemas: {self.input_parameter_constraints}")
         for operation in self.input_parameter_constraints:
-            operation_method, operation_path  = operation.split('-', 1)
-            full_operation_spec = self.openapi_spec.get("paths", {}).get(
-                operation_path, {}).get(operation_method, {})
+            operation_method, operation_path = operation.split("-", 1)
+            full_operation_spec = (
+                self.openapi_spec.get("paths", {})
+                .get(operation_path, {})
+                .get(operation_method, {})
+            )
             # print(f"Operation path: {operation_path}, Operation method: {operation_method}")
             # input(f"{self.openapi_spec.get("paths", {}).keys()}")
             if not full_operation_spec:
                 continue
 
             main_repsonse_schemas, _ = get_relevant_schemas_of_operation(
-                operation, self.openapi_spec)
-            print(f"Operation: {operation}, Main response schemas: {
-                  main_repsonse_schemas}")
+                operation, self.openapi_spec
+            )
+            print(
+                f"Operation: {operation}, Main response schemas: {
+                  main_repsonse_schemas}"
+            )
 
             for schema in main_repsonse_schemas:
-                for part in ['parameters', 'requestBody']:
+                for part in ["parameters", "requestBody"]:
                     try:
-                        print(f"[{self.service_name}] progress: {
-                              round(completed/progress_size*100, 2)}")
+                        print(
+                            f"[{self.service_name}] progress: {
+                              round(completed/progress_size*100, 2)}"
+                        )
                         completed += 1
 
                         specification = self.input_parameter_constraints.get(
-                            operation, {}).get(part, {})
+                            operation, {}
+                        ).get(part, {})
                         if not specification:
                             continue
 
@@ -322,27 +368,48 @@ class ParameterResponseMapper:
                         schema_spec = self.simplified_schemas[schema]
 
                         for param in specification:
-                            print(f"Mapping {param} from {
-                                  operation} to {schema}")
-                            description = specification[param].split(
-                                '(description:')[-1][:-1].strip()
+                            print(
+                                f"Mapping {param} from {
+                                  operation} to {schema}"
+                            )
+                            description = (
+                                specification[param]
+                                .split("(description:")[-1][:-1]
+                                .strip()
+                            )
 
                             found_mapping = self.foundMapping(
-                                param, description, schema)
+                                param, description, schema
+                            )
 
                             if found_mapping:
                                 found_corresponding_attribute = found_mapping[3]
                                 if found_corresponding_attribute is None:
                                     continue
-                                if schema not in self.response_body_input_parameter_mappings:
-                                    self.response_body_input_parameter_mappings[schema] = {
-                                        found_corresponding_attribute: [[operation, part, param]]}
-                                elif found_corresponding_attribute not in self.response_body_input_parameter_mappings[schema]:
-                                    self.response_body_input_parameter_mappings[schema][found_corresponding_attribute] = [
-                                        [operation, part, param]]
+                                if (
+                                    schema
+                                    not in self.response_body_input_parameter_mappings
+                                ):
+                                    self.response_body_input_parameter_mappings[
+                                        schema
+                                    ] = {
+                                        found_corresponding_attribute: [
+                                            [operation, part, param]
+                                        ]
+                                    }
+                                elif (
+                                    found_corresponding_attribute
+                                    not in self.response_body_input_parameter_mappings[
+                                        schema
+                                    ]
+                                ):
+                                    self.response_body_input_parameter_mappings[schema][
+                                        found_corresponding_attribute
+                                    ] = [[operation, part, param]]
                                 else:
-                                    self.response_body_input_parameter_mappings[schema][found_corresponding_attribute].append([
-                                                                                                                              operation, part, param])
+                                    self.response_body_input_parameter_mappings[schema][
+                                        found_corresponding_attribute
+                                    ].append([operation, part, param])
                                 continue
 
                             if self.save_and_load:
@@ -351,36 +418,42 @@ class ParameterResponseMapper:
 
                             mapping = [param, description, schema, None]
 
-                            filterring_data_type = get_data_type(
-                                specification[param])
-                            filterred_attr_schema = filter_attributes_in_schema_by_data_type(
-                                schema_spec, filterring_data_type)
+                            filterring_data_type = get_data_type(specification[param])
+                            filterred_attr_schema = (
+                                filter_attributes_in_schema_by_data_type(
+                                    schema_spec, filterring_data_type
+                                )
+                            )
                             if not filterred_attr_schema:
                                 self.found_mappings.append(mapping)
                                 continue
 
-                            method = operation.split('-')[0]
-                            endpoint = '-'.join(operation.split('-')[1:])
-                            print(f"Mapping {param} to {json.dumps(
-                                filterred_attr_schema)} in {schema}")
+                            method = operation.split("-")[0]
+                            endpoint = "-".join(operation.split("-")[1:])
+                            print(
+                                f"Mapping {param} to {json.dumps(
+                                filterred_attr_schema)} in {schema}"
+                            )
 
                             parameter_observation_prompt = PARAMETER_OBSERVATION.format(
                                 method=method.upper(),
                                 endpoint=endpoint,
                                 attribute=param,
-                                description=description
+                                description=description,
                             )
 
                             parameter_observation_response = GPTChatCompletion(
-                                parameter_observation_prompt, model="gpt-4-turbo")
+                                parameter_observation_prompt, model="gpt-4-turbo"
+                            )
 
                             schema_observation_prompt = SCHEMA_OBSERVATION.format(
                                 schema=schema,
-                                specification=json.dumps(filterred_attr_schema)
+                                specification=json.dumps(filterred_attr_schema),
                             )
 
                             schema_observation_response = GPTChatCompletion(
-                                schema_observation_prompt, model="gpt-4-turbo")
+                                schema_observation_prompt, model="gpt-4-turbo"
+                            )
 
                             mapping_attribute_to_schema_prompt = PARAMETER_SCHEMA_MAPPING_PROMPT.format(
                                 method=method.upper(),
@@ -390,25 +463,29 @@ class ParameterResponseMapper:
                                 parameter_observation=parameter_observation_response,
                                 schema=schema,
                                 schema_observation=schema_observation_response,
-                                attributes=[
-                                    attr for attr in filterred_attr_schema]
+                                attributes=[attr for attr in filterred_attr_schema],
                             )
 
                             mapping_attribute_to_schema_response = GPTChatCompletion(
-                                mapping_attribute_to_schema_prompt, model="gpt-4-turbo")
+                                mapping_attribute_to_schema_prompt, model="gpt-4-turbo"
+                            )
 
                             print("GPT: ", mapping_attribute_to_schema_response)
 
                             answer = extract_answer(
-                                mapping_attribute_to_schema_response)
-                            if not 'yes' in answer:
+                                mapping_attribute_to_schema_response
+                            )
+                            if not "yes" in answer:
                                 self.found_mappings.append(mapping)
                                 continue
 
                             corresponding_attribute = extract_coresponding_attribute(
-                                mapping_attribute_to_schema_response)
+                                mapping_attribute_to_schema_response
+                            )
 
-                            if not verify_attribute_in_schema(filterred_attr_schema, corresponding_attribute):
+                            if not verify_attribute_in_schema(
+                                filterred_attr_schema, corresponding_attribute
+                            ):
                                 self.found_mappings.append(mapping)
                                 continue
 
@@ -418,35 +495,56 @@ class ParameterResponseMapper:
                                 parameter_name=param,
                                 description=description,
                                 schema=schema,
-                                corresponding_attribute=corresponding_attribute
+                                corresponding_attribute=corresponding_attribute,
                             )
 
                             mapping_confirmation_response = GPTChatCompletion(
-                                mapping_confirmation_prompt, model="gpt-4-turbo")
+                                mapping_confirmation_prompt, model="gpt-4-turbo"
+                            )
                             mapping_status = extract_answer(
-                                mapping_confirmation_response)
+                                mapping_confirmation_response
+                            )
 
                             if "incorrect" in mapping_status:
-                                print(f"[INCORRECT] {method.upper()} {endpoint} {
-                                      param} --- {schema} {corresponding_attribute}")
+                                print(
+                                    f"[INCORRECT] {method.upper()} {endpoint} {
+                                      param} --- {schema} {corresponding_attribute}"
+                                )
                                 self.found_mappings.append(mapping)
                                 continue
 
-                            print(f"[CORRECT] {method.upper()} {endpoint} {
-                                  param} --- {schema} {corresponding_attribute}")
+                            print(
+                                f"[CORRECT] {method.upper()} {endpoint} {
+                                  param} --- {schema} {corresponding_attribute}"
+                            )
 
-                            if schema not in self.response_body_input_parameter_mappings:
+                            if (
+                                schema
+                                not in self.response_body_input_parameter_mappings
+                            ):
                                 self.response_body_input_parameter_mappings[schema] = {
-                                    corresponding_attribute: [[operation, part, param]]}
-                            elif corresponding_attribute not in self.response_body_input_parameter_mappings[schema]:
-                                self.response_body_input_parameter_mappings[schema][corresponding_attribute] = [
-                                    [operation, part, param]]
+                                    corresponding_attribute: [[operation, part, param]]
+                                }
+                            elif (
+                                corresponding_attribute
+                                not in self.response_body_input_parameter_mappings[
+                                    schema
+                                ]
+                            ):
+                                self.response_body_input_parameter_mappings[schema][
+                                    corresponding_attribute
+                                ] = [[operation, part, param]]
                             else:
-                                self.response_body_input_parameter_mappings[schema][corresponding_attribute].append([
-                                                                                                                    operation, part, param])
+                                self.response_body_input_parameter_mappings[schema][
+                                    corresponding_attribute
+                                ].append([operation, part, param])
 
-                            mapping = [param, description,
-                                       schema, corresponding_attribute]
+                            mapping = [
+                                param,
+                                description,
+                                schema,
+                                corresponding_attribute,
+                            ]
                             self.found_mappings.append(mapping)
 
                             if self.save_and_load:
@@ -455,7 +553,11 @@ class ParameterResponseMapper:
 
                             if self.outfile:
                                 with open(self.outfile, "w") as f:
-                                    json.dump(self.response_body_input_parameter_mappings, f, indent=2)
+                                    json.dump(
+                                        self.response_body_input_parameter_mappings,
+                                        f,
+                                        indent=2,
+                                    )
                     except Exception as e:
                         print(f"Error: {e}")
                         continue
@@ -464,32 +566,42 @@ class ParameterResponseMapper:
         print(f"\nNAIVE Mapping input parameters to response schemas...")
         self.response_body_input_parameter_mappings = {}
 
-        progress_size = 2 * \
-            len(self.input_parameter_constraints)*len(self.list_of_schemas)
+        progress_size = (
+            2 * len(self.input_parameter_constraints) * len(self.list_of_schemas)
+        )
         completed = 0
 
         for operation in self.input_parameter_constraints:
-            operation_path = operation.split('-')[1]
-            operation_method = operation.split('-')[0]
-            full_operation_spec = self.openapi_spec.get("paths", {}).get(
-                operation_path, {}).get(operation_method, {})
+            operation_path = operation.split("-")[1]
+            operation_method = operation.split("-")[0]
+            full_operation_spec = (
+                self.openapi_spec.get("paths", {})
+                .get(operation_path, {})
+                .get(operation_method, {})
+            )
             if not full_operation_spec:
                 continue
 
             main_repsonse_schemas, _ = get_relevant_schemas_of_operation(
-                operation, self.openapi_spec)
-            print(f"Operation: {operation}, Main response schemas: {
-                  main_repsonse_schemas}")
+                operation, self.openapi_spec
+            )
+            print(
+                f"Operation: {operation}, Main response schemas: {
+                  main_repsonse_schemas}"
+            )
 
             for schema in main_repsonse_schemas:
-                for part in ['parameters', 'requestBody']:
+                for part in ["parameters", "requestBody"]:
                     try:
-                        print(f"[{self.service_name}] progress: {
-                              round(completed/progress_size*100, 2)}")
+                        print(
+                            f"[{self.service_name}] progress: {
+                              round(completed/progress_size*100, 2)}"
+                        )
                         completed += 1
 
                         specification = self.input_parameter_constraints.get(
-                            operation, {}).get(part, {})
+                            operation, {}
+                        ).get(part, {})
                         if not specification:
                             continue
 
@@ -499,27 +611,48 @@ class ParameterResponseMapper:
                         schema_spec = self.simplified_schemas[schema]
 
                         for param in specification:
-                            print(f"Mapping {param} from {
-                                  operation} to {schema}")
-                            description = specification[param].split(
-                                '(description:')[-1][:-1].strip()
+                            print(
+                                f"Mapping {param} from {
+                                  operation} to {schema}"
+                            )
+                            description = (
+                                specification[param]
+                                .split("(description:")[-1][:-1]
+                                .strip()
+                            )
 
                             found_mapping = self.foundMapping(
-                                param, description, schema)
+                                param, description, schema
+                            )
 
                             if found_mapping:
                                 found_corresponding_attribute = found_mapping[3]
                                 if found_corresponding_attribute is None:
                                     continue
-                                if schema not in self.response_body_input_parameter_mappings:
-                                    self.response_body_input_parameter_mappings[schema] = {
-                                        found_corresponding_attribute: [[operation, part, param]]}
-                                elif found_corresponding_attribute not in self.response_body_input_parameter_mappings[schema]:
-                                    self.response_body_input_parameter_mappings[schema][found_corresponding_attribute] = [
-                                        [operation, part, param]]
+                                if (
+                                    schema
+                                    not in self.response_body_input_parameter_mappings
+                                ):
+                                    self.response_body_input_parameter_mappings[
+                                        schema
+                                    ] = {
+                                        found_corresponding_attribute: [
+                                            [operation, part, param]
+                                        ]
+                                    }
+                                elif (
+                                    found_corresponding_attribute
+                                    not in self.response_body_input_parameter_mappings[
+                                        schema
+                                    ]
+                                ):
+                                    self.response_body_input_parameter_mappings[schema][
+                                        found_corresponding_attribute
+                                    ] = [[operation, part, param]]
                                 else:
-                                    self.response_body_input_parameter_mappings[schema][found_corresponding_attribute].append([
-                                                                                                                              operation, part, param])
+                                    self.response_body_input_parameter_mappings[schema][
+                                        found_corresponding_attribute
+                                    ].append([operation, part, param])
                                 continue
 
                             if self.save_and_load:
@@ -528,57 +661,81 @@ class ParameterResponseMapper:
 
                             mapping = [param, description, schema, None]
 
-                            filterring_data_type = get_data_type(
-                                specification[param])
-                            filterred_attr_schema = filter_attributes_in_schema_by_data_type(
-                                schema_spec, filterring_data_type)
+                            filterring_data_type = get_data_type(specification[param])
+                            filterred_attr_schema = (
+                                filter_attributes_in_schema_by_data_type(
+                                    schema_spec, filterring_data_type
+                                )
+                            )
                             if not filterred_attr_schema:
                                 self.found_mappings.append(mapping)
                                 continue
 
-                            method = operation.split('-')[0]
-                            endpoint = '-'.join(operation.split('-')[1:])
-                            print(f"Mapping {param} to {json.dumps(
-                                filterred_attr_schema)} in {schema}")
+                            method = operation.split("-")[0]
+                            endpoint = "-".join(operation.split("-")[1:])
+                            print(
+                                f"Mapping {param} to {json.dumps(
+                                filterred_attr_schema)} in {schema}"
+                            )
 
-                            mapping_attribute_to_schema_prompt = NAIVE_PARAMETER_SCHEMA_MAPPING_PROMPT.format(
-                                method=method.upper(),
-                                endpoint=endpoint,
-                                attribute=param,
-                                description=description,
-                                schema_specification=json.dumps(
-                                    filterred_attr_schema),
-                                schema=schema,
-                                attributes=[
-                                    attr for attr in filterred_attr_schema]
+                            mapping_attribute_to_schema_prompt = (
+                                NAIVE_PARAMETER_SCHEMA_MAPPING_PROMPT.format(
+                                    method=method.upper(),
+                                    endpoint=endpoint,
+                                    attribute=param,
+                                    description=description,
+                                    schema_specification=json.dumps(
+                                        filterred_attr_schema
+                                    ),
+                                    schema=schema,
+                                    attributes=[attr for attr in filterred_attr_schema],
+                                )
                             )
 
                             mapping_attribute_to_schema_response = GPTChatCompletion(
-                                mapping_attribute_to_schema_prompt, model="gpt-4-turbo")
+                                mapping_attribute_to_schema_prompt, model="gpt-4-turbo"
+                            )
 
                             print("GPT: ", mapping_attribute_to_schema_response)
 
                             answer = extract_answer(
-                                mapping_attribute_to_schema_response)
-                            if not 'yes' in answer:
+                                mapping_attribute_to_schema_response
+                            )
+                            if not "yes" in answer:
                                 self.found_mappings.append(mapping)
                                 continue
 
                             corresponding_attribute = extract_coresponding_attribute(
-                                mapping_attribute_to_schema_response)
+                                mapping_attribute_to_schema_response
+                            )
 
-                            if schema not in self.response_body_input_parameter_mappings:
+                            if (
+                                schema
+                                not in self.response_body_input_parameter_mappings
+                            ):
                                 self.response_body_input_parameter_mappings[schema] = {
-                                    corresponding_attribute: [[operation, part, param]]}
-                            elif corresponding_attribute not in self.response_body_input_parameter_mappings[schema]:
-                                self.response_body_input_parameter_mappings[schema][corresponding_attribute] = [
-                                    [operation, part, param]]
+                                    corresponding_attribute: [[operation, part, param]]
+                                }
+                            elif (
+                                corresponding_attribute
+                                not in self.response_body_input_parameter_mappings[
+                                    schema
+                                ]
+                            ):
+                                self.response_body_input_parameter_mappings[schema][
+                                    corresponding_attribute
+                                ] = [[operation, part, param]]
                             else:
-                                self.response_body_input_parameter_mappings[schema][corresponding_attribute].append([
-                                                                                                                    operation, part, param])
+                                self.response_body_input_parameter_mappings[schema][
+                                    corresponding_attribute
+                                ].append([operation, part, param])
 
-                            mapping = [param, description,
-                                       schema, corresponding_attribute]
+                            mapping = [
+                                param,
+                                description,
+                                schema,
+                                corresponding_attribute,
+                            ]
                             self.found_mappings.append(mapping)
 
                             if self.save_and_load:

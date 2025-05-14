@@ -6,4 +6,5 @@ PyYAML
 graphviz
 networkx
 pyvis
-pandas==1.5.3
+pandas
+openai

@@ -1,11 +1,14 @@
+# /src/verifier/find_example_utils.py
+
 import json
+
 
 def find_key(obj, key, ancestor_key, within_ancestor=False):
     if within_ancestor:
         # Now we are within the ancestor_key, check if key exists
         if key in obj:
             return obj[key]
-        
+
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k == ancestor_key:
@@ -18,7 +21,7 @@ def find_key(obj, key, ancestor_key, within_ancestor=False):
                             result = find_key(item, key, ancestor_key, True)
                             if result is not None:
                                 return result
-            
+
             # Continue to search recursively in nested dictionaries and lists
             if isinstance(v, dict):
                 result = find_key(v, key, ancestor_key, within_ancestor)
@@ -36,8 +39,9 @@ def find_key(obj, key, ancestor_key, within_ancestor=False):
                 result = find_key(item, key, ancestor_key, within_ancestor)
                 if result is not None:
                     return result
-    
+
     return None
+
 
 def find_keys(obj, key, ancestor_key, within_ancestor=False):
     results = []
@@ -56,7 +60,7 @@ def find_keys(obj, key, ancestor_key, within_ancestor=False):
                 for item in v:
                     if isinstance(item, dict):
                         results.extend(find_keys(item, key, ancestor_key, True))
-        
+
         # Continue to search recursively in nested dictionaries and lists
         if isinstance(v, dict):
             results.extend(find_keys(v, key, ancestor_key, within_ancestor))
@@ -64,7 +68,7 @@ def find_keys(obj, key, ancestor_key, within_ancestor=False):
             for item in v:
                 if isinstance(item, dict):
                     results.extend(find_keys(item, key, ancestor_key, within_ancestor))
-    
+
     return results
 
 
@@ -74,7 +78,7 @@ def find_example_value_brute_force(openapi_spec, object_name, field_name):
     example_value = None
     if example_object is not None:
         example_value = find_key(example_object, field_name, "", True)
-    if example_value is None:        
+    if example_value is None:
         example_value = find_key(openapi_spec, field_name, "example")
 
     if example_value is not None:
@@ -86,6 +90,7 @@ def find_example_value_brute_force(openapi_spec, object_name, field_name):
                     return None
             return example_value
     return None
+
 
 def find_example_value_in_definitions(openapi_spec, object_name, field_name):
     # Check in components.schemas (OpenAPI 3.0)
@@ -102,7 +107,6 @@ def find_example_value_in_definitions(openapi_spec, object_name, field_name):
     else:
         example_value = example.get(field_name, None)
 
-
     if example_value is None:
         properties = target_object.get("properties", {})
         field = properties.get(field_name, {})
@@ -110,6 +114,7 @@ def find_example_value_in_definitions(openapi_spec, object_name, field_name):
 
     # Return the example value if available
     return example_value
+
 
 def find_example_value_in_components(openapi_spec, object_name, field_name):
     # Check in components.schemas (OpenAPI 3.0)
@@ -127,34 +132,43 @@ def find_example_value_in_components(openapi_spec, object_name, field_name):
             example_value = example[0].get(field_name, None)
         else:
             example_value = example.get(field_name, None)
-    
+
     if example_value is None:
-        if 'enum' in field and len(field['enum']) > 0:
-            example_value = field['enum'][0]
-            
+        if "enum" in field and len(field["enum"]) > 0:
+            example_value = field["enum"][0]
+
     # Return the example value if available
     return example_value
 
+
 def find_example_value(openapi_spec, object_name, field_name):
     # Check in components.schemas (OpenAPI 3.0)
-    example_value = find_example_value_in_components(openapi_spec, object_name, field_name)
+    example_value = find_example_value_in_components(
+        openapi_spec, object_name, field_name
+    )
 
     # Check in definitions (OpenAPI 2.0)
     if example_value is None:
-        example_value = find_example_value_in_definitions(openapi_spec, object_name, field_name)
+        example_value = find_example_value_in_definitions(
+            openapi_spec, object_name, field_name
+        )
 
     if example_value is None:
-        example_value = find_example_value_brute_force(openapi_spec, object_name, field_name)
+        example_value = find_example_value_brute_force(
+            openapi_spec, object_name, field_name
+        )
 
     # if example_value is None:
-        # print(f"Example value not found for '{field_name}' in '{object_name}' for API spec {openapi_spec.get('info', {}).get('title', '')}")
+    # print(f"Example value not found for '{field_name}' in '{object_name}' for API spec {openapi_spec.get('info', {}).get('title', '')}")
     # input(f"Example value for '{field_name}' in '{object_name}': {example_value}")
     return example_value
 
+
 def load_openapi_spec(filepath):
-    with open(filepath, 'r', encoding='utf-8') as file:
+    with open(filepath, "r", encoding="utf-8") as file:
         openapi_spec = json.load(file)
     return openapi_spec
+
 
 # Usage example:
 # Assuming you have a JSON file for OpenAPI spec called "openapi.json"
@@ -165,6 +179,8 @@ if __name__ == "__main__":
     openapi_spec = load_openapi_spec(filepath)
     fieldName = "id"
     ObjectName = "BasicProjectDetails"
-    example_value = find_example_value_in_definitions(openapi_spec, ObjectName, fieldName)
+    example_value = find_example_value_in_definitions(
+        openapi_spec, ObjectName, fieldName
+    )
 
     print(f"Example value for '{fieldName}' in '{ObjectName}': {example_value}")

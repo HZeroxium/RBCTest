@@ -9,6 +9,7 @@ import json
 
 from urllib.parse import parse_qs
 
+
 def query_to_dict(query_string):
     # Parse the query string into a dictionary
     if not isinstance(query_string, str):
@@ -23,12 +24,14 @@ def query_to_dict(query_string):
 
     return parsed_query
 
+
 def write_json_file(data, file_path):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
+
 def main():
-    csv_file_path = r'RBCTest_dataset/StripeClone/requests.csv'
+    csv_file_path = r"RBCTest_dataset/StripeClone/requests.csv"
     df = pd.read_csv(csv_file_path, encoding="utf-8")
     for index, row in df.iterrows():
         query_parameters = row["queryParameters"]
@@ -57,12 +60,19 @@ def main():
         os.makedirs(os.path.dirname(body_parameters_path), exist_ok=True)
 
         # query_parameters = query_to_dict(query_parameters)
-        query_parameters = json.loads(query_parameters) if isinstance(query_parameters, str) else {}
-        response_bodies = json.loads(response_bodies) if isinstance(response_bodies, str) else {}
-        body_parameters = json.loads(body_parameters) if isinstance(body_parameters, str) else {}
+        query_parameters = (
+            json.loads(query_parameters) if isinstance(query_parameters, str) else {}
+        )
+        response_bodies = (
+            json.loads(response_bodies) if isinstance(response_bodies, str) else {}
+        )
+        body_parameters = (
+            json.loads(body_parameters) if isinstance(body_parameters, str) else {}
+        )
         write_json_file(response_bodies, response_bodies_path)
         write_json_file(query_parameters, query_parameters_path)
         write_json_file(body_parameters, body_parameters_path)
+
 
 if __name__ == "__main__":
     main()
