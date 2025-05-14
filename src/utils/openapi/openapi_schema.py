@@ -1,3 +1,5 @@
+# /src/utils/openapi/openapi_schema.py
+
 """
 OpenAPI schema utilities for working with schema objects and definitions.
 
@@ -306,7 +308,7 @@ def get_simplified_schema(spec: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary mapping schema names to their simplified definitions
     """
-    from .openapi_operations import extract_operations, isSuccessStatusCode
+    from .openapi_operations import extract_operations, is_success_status_code
 
     simplified_schema_dict = {}
 
@@ -322,7 +324,7 @@ def get_simplified_schema(spec: Dict[str, Any]) -> Dict[str, Any]:
             responses = obj["responses"]
             success_response = None
             for rk, rv in responses.items():
-                if isSuccessStatusCode(rk):
+                if is_success_status_code(rk):
                     success_response = rv
 
                     schema_ref = find_object_with_key(success_response, "$ref")

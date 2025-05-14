@@ -1,3 +1,5 @@
+# /src/utils/openapi/__init__.py
+
 """
 OpenAPI utilities for working with OpenAPI specifications.
 
@@ -11,7 +13,7 @@ from .openapi_core import (
     extract_operations,
     get_ref,
     find_object_with_key,
-    isSuccessStatusCode,
+    is_success_status_code,
     ruler,
     jprint,
     success_code,

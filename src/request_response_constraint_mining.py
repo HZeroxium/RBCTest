@@ -4,9 +4,7 @@
 from response_body_verification.data_model_buiding import *
 from response_body_verification.constraint_inference import *
 from response_body_verification.parameter_responsebody_mapping import *
-from utils.convert_json_to_excel_annotation_file import (
-    convert_json_to_excel_response_property_constraints,
-)
+from utils.excel_utils import convert_json_to_excel_response_property_constraints
 import openai
 
 import os

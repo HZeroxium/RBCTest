@@ -1,3 +1,5 @@
+# /src/utils/openapi/openapi_operations.py
+
 """
 OpenAPI operations utilities for working with API operations.
 
@@ -11,7 +13,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from .openapi_core import (
     find_object_with_key,
     get_ref,
-    isSuccessStatusCode,
+    is_success_status_code,
     extract_operations,
     convert_path_fn,
 )
@@ -205,7 +207,7 @@ def get_operation_params(
 
                 success_response = None
                 for rk, rv in responses.items():
-                    if isSuccessStatusCode(rk):
+                    if is_success_status_code(rk):
                         success_response = rv
                         break
 
@@ -374,7 +376,7 @@ def get_relevant_schemas_of_operation(
 
     if "responses" in operation_spec:
         for response_code in operation_spec["responses"]:
-            if isSuccessStatusCode(response_code):
+            if is_success_status_code(response_code):
                 _, new_relevant_schemas = get_schema_recursive(
                     operation_spec["responses"][response_code], openapi_spec
                 )
@@ -557,7 +559,7 @@ def get_response_body_name_and_type(
 
     success_response = None
     for rk, rv in response_spec.items():
-        if isSuccessStatusCode(rk):
+        if is_success_status_code(rk):
             success_response = rv
             break
 
@@ -606,7 +608,7 @@ def get_relevent_response_schemas_of_operation(
 
     if "responses" in operation_spec:
         for response_code in operation_spec["responses"]:
-            if isSuccessStatusCode(response_code):
+            if is_success_status_code(response_code):
                 main_schema_ref = find_object_with_key(
                     operation_spec["responses"][response_code], "$ref"
                 )
@@ -641,7 +643,7 @@ def get_main_response_schemas_of_operation(
 
     if "responses" in operation_spec:
         for response_code in operation_spec["responses"]:
-            if isSuccessStatusCode(response_code):
+            if is_success_status_code(response_code):
                 main_schema_ref = find_object_with_key(
                     operation_spec["responses"][response_code], "$ref"
                 )
@@ -671,7 +673,7 @@ def get_relevant_schema_of_operation(
 
     if "responses" in operation_spec:
         for response_code in operation_spec["responses"]:
-            if isSuccessStatusCode(response_code):
+            if is_success_status_code(response_code):
                 _, new_relevant_schemas = get_schema_recursive(
                     operation_spec["responses"][response_code], openapi_spec
                 )
@@ -772,7 +774,7 @@ def simplify_openapi(openapi: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 success_response = None
 
                 for rk, rv in responses.items():
-                    if isSuccessStatusCode(rk):
+                    if is_success_status_code(rk):
                         success_response = rv
                         break
 

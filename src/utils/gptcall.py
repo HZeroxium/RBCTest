@@ -1,3 +1,5 @@
+# /src/utils/gptcall.py
+
 """
 GPT API Interaction Module
 
@@ -6,9 +8,8 @@ processing responses, and managing a local cache of previous interactions.
 """
 
 import json
-import os
 import uuid
-from typing import Dict, List, Optional, Union, Literal
+from typing import Optional, Literal
 from hashlib import md5
 import logging
 from datetime import datetime

@@ -1,3 +1,5 @@
+# /src/utils/openapi/openapi_core.py
+
 """
 Core OpenAPI specification utilities for loading and basic operations.
 
@@ -51,7 +53,7 @@ def convert_path_fn(x: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[\/{}.]", "_", x))
 
 
-def isSuccessStatusCode(x: Union[int, str]) -> bool:
+def is_success_status_code(x: Union[int, str]) -> bool:
     """
     Check if a status code represents a successful HTTP response.
 

@@ -6,9 +6,7 @@ from response_body_verification.parameter_responsebody_mapping import *
 
 import openai
 from eval.request_approach_evaluate import evaluate_request_response_constraint_mining
-from utils.convert_json_to_excel_annotation_file import (
-    convert_json_to_excel_request_response_constraints,
-)
+from utils.excel_utils import convert_json_to_excel_request_response_constraints
 import os, dotenv
 
 dotenv.load_dotenv()
