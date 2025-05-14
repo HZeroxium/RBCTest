@@ -1,319 +1,353 @@
-root_folder = r"approaches\rbctest_our_data"
-# root_folder = r"experiment_our"
-api_spec_folder = r"RBCTest_dataset"
-import json
+# /src/verifier.py
+
+"""
+Constraint Verification Module
+
+This module verifies constraints against API responses. It processes constraint
+definitions from Excel files and runs verification scripts against example values
+to determine if the constraints are satisfied.
+"""
+
 import os
 import random
 import pandas as pd
-import uuid
+from typing import Dict, List, Any, Optional, Tuple
+
 from verifier.find_example_utils import find_example_value, load_openapi_spec
-from execute_code_in_excel import get_api_responses
+from utils.verification_utils import (
+    response_property_constraint_verify,
+    request_response_constraint_verify,
+)
+from utils.execution_utils import get_api_responses
+from models.verification_models import (
+    VerificationConfig,
+    ConstraintVerificationResult,
+    FieldVerificationResult,
+)
 
-EXECUTABLE = "python"
 
-import subprocess
-
-
-def find_replace_and_keep_recursively(search_data, field, new_value):
+class ConstraintVerifier:
     """
-    Takes a dict or a list of dicts with nested lists and dicts,
-    searches all dicts for a key of the field provided,
-    replaces its value with new_value,
-    and retains only the path to the found field and its value.
-    """
-    if isinstance(search_data, dict):
-        for key, value in search_data.items():
-            if key == field:
-                return {key: new_value}
-            elif isinstance(value, dict):
-                result = find_replace_and_keep_recursively(value, field, new_value)
-                if result:
-                    return {key: result}
-            elif isinstance(value, list):
-                results = []
-                for item in value:
-                    if isinstance(item, dict):
-                        result = find_replace_and_keep_recursively(
-                            item, field, new_value
-                        )
-                        if result:
-                            results.append(result)
-                if results:
-                    return {key: results}
+    Verifies constraints against API responses.
 
-    elif isinstance(search_data, list):
-        results = []
-        for item in search_data:
-            if isinstance(item, dict):
-                result = find_replace_and_keep_recursively(item, field, new_value)
-                if result:
-                    results.append(result)
-        return results if results else None
-
-    return None
-
-
-def execute_command(command):
-    try:
-        # Execute the command and capture the output
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-
-        # Return the output if the command was successful
-        return result.stdout.strip()
-    except subprocess.CalledProcessError:
-        # Return None or handle the error if the command fails
-        return None
-
-
-def execute_python(file_path):
-    result = execute_command([EXECUTABLE, file_path])
-    return result
-
-
-def response_property_constraint_verify(
-    python_code, field_name, example_value, api_response
-):
-    if "28" in api_response and field_name == "enabled_events":
-        return True
-
-    api_response = json.loads(api_response)
-    original_api_response = api_response.copy()
-    api_response = find_replace_and_keep_recursively(
-        api_response, field_name, example_value
-    )
-    if api_response is None:
-        api_response = {} if isinstance(original_api_response, dict) else []
-    api_response = json.dumps(api_response)
-
-    uuid_str = str(uuid.uuid4())
-    file_name = f"code/api_response_{uuid_str}.json"
-    with open(file_name, "w") as f:
-        f.write(api_response)
-
-    verify_code = f"""
-{python_code}
-import json
-latest_response = json.loads(open("{file_name}").read())
-status = verify_latest_response(latest_response)
-print(status)
+    This class processes constraint definitions from Excel files and
+    verifies them against API responses to determine if they are satisfied.
     """
 
-    with open("verify.py", "w") as f:
-        f.write(verify_code)
+    def __init__(self, config: VerificationConfig) -> None:
+        """
+        Initialize the constraint verifier.
 
-    result = execute_python("verify.py")
-    if result == "-1":
-        with open("verify.py", "w") as f:
-            f.write(verify_code)
-        input(
-            f"python_code: {python_code}\nfield_name: {field_name}\nexample_value: {example_value}\napi_response: {api_response}"
-        )
-    return result
+        Args:
+            config: Configuration parameters for the verifier
 
+        Returns:
+            None
+        """
+        self.config = config
+        self.count_example_found = 0
+        self.count_all_constraints = 0
 
-def request_response_constraint_verify(
-    python_code,
-    request_information,
-    request_param,
-    field_name,
-    example_value,
-    api_response,
-):
-    try:
-        api_response = json.loads(api_response)
-        original_api_response = api_response.copy()
-        api_response = find_replace_and_keep_recursively(
-            api_response, field_name, example_value
-        )
-        if api_response is None:
-            api_response = {} if isinstance(original_api_response, dict) else []
+        # Ensure the code directory exists
+        os.makedirs("code", exist_ok=True)
 
-        api_response = json.dumps(api_response)
+    def get_api_folders(self) -> List[str]:
+        """
+        Get the list of API folders to process.
 
-        request_information = json.loads(request_information)
-        if request_param == field_name:
-            request_information[request_param] = example_value
-        else:
-            if request_param in request_information:
-                del request_information[request_param]
-        request_information = json.dumps(request_information)
+        Returns:
+            List of API folder names
+        """
+        return [
+            f
+            for f in os.listdir(self.config.root_folder)
+            if os.path.isdir(os.path.join(self.config.root_folder, f))
+        ]
 
-    except Exception as e:
-        print("Error")
-        input(
-            f"{e}\npython_code: {python_code}\nrequest_information: {request_information}\nrequest_param: {request_param}\nfield_name: {field_name}\nexample_value: {example_value}\napi_response: {api_response}"
-        )
-        return "UNKNOWN"
+    def verify_constraints(self, api_filter: Optional[str] = None) -> None:
+        """
+        Verify constraints for all APIs or a specific API.
 
-    uuid_str = str(uuid.uuid4())
-    file_name = f"code/api_response_{uuid_str}.json"
+        Args:
+            api_filter: Optional API name filter
 
-    with open(file_name, "w") as f:
-        f.write(api_response)
+        Returns:
+            None
+        """
+        apis = self.get_api_folders()
 
-    request_info_file = f"code/request_info_{uuid_str}.json"
-    with open(request_info_file, "w") as f:
-        f.write(request_information)
+        print(f"Start verifying constraints for: {apis}")
 
-    verify_code = f"""
-{python_code}
-import json
-latest_response = json.loads(open("{file_name}").read())
-request_info = json.loads(open("{request_info_file}").read())
-status = verify_latest_response(latest_response, request_info)
-print(status)
-    """
+        for api in apis:
+            if api_filter and api_filter not in api:
+                continue
 
-    with open("verify.py", "w") as f:
-        f.write(verify_code)
+            self._verify_api_constraints(api)
 
-    result = execute_python("verify.py")
-    if result == "-1":
-        with open("verify.py", "w") as f:
-            f.write(verify_code)
-        input(
-            f"python_code: {python_code}\nfield_name: {field_name}\nexample_value: {example_value}\napi_response: {api_response}"
+        print(
+            f"Found example value for {self.count_example_found}/{self.count_all_constraints} constraints"
         )
 
-    return result
+    def _verify_api_constraints(self, api: str) -> None:
+        """
+        Verify constraints for a specific API.
 
+        Args:
+            api: The API name
 
-apis = [
-    f for f in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, f))
-]
-count_example_found = 0
-count_all_constraints = 0
+        Returns:
+            None
+        """
+        api_folder = os.path.join(self.config.root_folder, api)
 
-print("Start verifying constraints", apis)
-for api in apis:
-    if "Can" not in api:
-        continue
-    api_folder = os.path.join(root_folder, api)
-
-    api_responses = get_api_responses(
-        os.path.join(api_spec_folder, api.replace(" API", ""))
-    )
-    api_responses = random.sample(api_responses, min(10, len(api_responses)))
-
-    request_params = [
-        os.path.join(
-            api_spec_folder,
-            api.replace(" API", ""),
-            "queryParameters",
-            os.path.basename(f),
+        # Get API responses and related files
+        api_responses = get_api_responses(
+            os.path.join(self.config.api_spec_folder, api.replace(" API", ""))
         )
-        for f in api_responses
-    ]
 
-    request_bodies = [
-        os.path.join(
-            api_spec_folder,
-            api.replace(" API", ""),
-            "bodyParameters",
-            os.path.basename(f),
+        # Sample responses if there are too many
+        if len(api_responses) > 10:
+            api_responses = random.sample(api_responses, 10)
+
+        # Construct paths for request parameters and bodies
+        request_params = [
+            os.path.join(
+                self.config.api_spec_folder,
+                api.replace(" API", ""),
+                "queryParameters",
+                os.path.basename(f),
+            )
+            for f in api_responses
+        ]
+
+        request_bodies = [
+            os.path.join(
+                self.config.api_spec_folder,
+                api.replace(" API", ""),
+                "bodyParameters",
+                os.path.basename(f),
+            )
+            for f in api_responses
+        ]
+
+        # Verify response property constraints
+        response_constraints_file = os.path.join(
+            api_folder, "response_property_constraints.xlsx"
         )
-        for f in api_responses
-    ]
+        if os.path.exists(response_constraints_file):
+            self._verify_response_property_constraints(
+                response_constraints_file, api, api_responses
+            )
 
-    response_constraints_file = os.path.join(
-        api_folder, "response_property_constraints.xlsx"
-    )
-    request_response_constraints_file = os.path.join(
-        api_folder, "request_response_constraints.xlsx"
-    )
-    if os.path.exists(response_constraints_file):
-        df = pd.read_excel(response_constraints_file)
-        # if not have col "Example_value" then add col "Example_value" to df
+        # Verify request-response constraints
+        request_response_constraints_file = os.path.join(
+            api_folder, "request_response_constraints.xlsx"
+        )
+        if os.path.exists(request_response_constraints_file):
+            self._verify_request_response_constraints(
+                request_response_constraints_file,
+                api,
+                api_responses,
+                request_params,
+                request_bodies,
+            )
+
+    def _verify_response_property_constraints(
+        self, constraints_file: str, api: str, api_responses: List[str]
+    ) -> None:
+        """
+        Verify response property constraints for an API.
+
+        Args:
+            constraints_file: Path to the constraints file
+            api: The API name
+            api_responses: List of API response files
+
+        Returns:
+            None
+        """
+        df = pd.read_excel(constraints_file)
+
+        # Add columns for example values and verification results if they don't exist
         if "Example_value" not in df.columns:
             df["Example_value"] = None
 
         if "verify_result" not in df.columns:
             df["verify_result"] = None
 
+        # Load OpenAPI specification
         openapi_spec_file = os.path.join(
-            api_spec_folder, api.replace(" API", ""), "openapi.json"
+            self.config.api_spec_folder, api.replace(" API", ""), "openapi.json"
         )
         openapi_spec = load_openapi_spec(openapi_spec_file)
+
+        # Process each constraint
         for index, row in df.iterrows():
             object_name = row["response resource"]
             field_name = row["attribute"]
+
+            # Find example value
             example_value = find_example_value(openapi_spec, object_name, field_name)
             df.at[index, "Example_value"] = str(example_value)
-            count_all_constraints += 1
+
+            self.count_all_constraints += 1
+
+            # Verify constraint if example value is found
             if example_value is not None:
-                count_example_found += 1
+                self.count_example_found += 1
 
-                python_code = row["verification script"]
+                # Get the verification script and execute it if available
+                python_code = row.get("verification script")
                 df.at[index, "verify_result"] = 1
-                if python_code is not None:
+
+                if python_code is not None and not pd.isna(python_code):
                     for api_response in api_responses:
-                        api_response = open(api_response, "r", encoding="utf-8").read()
-                        result = response_property_constraint_verify(
-                            python_code, field_name, example_value, api_response
-                        )
-                        if result == "-1":
-                            df.at[index, "verify_result"] = 0
-                            break
+                        try:
+                            with open(api_response, "r", encoding="utf-8") as f:
+                                api_response_text = f.read()
 
-    if os.path.exists(response_constraints_file):
-        df.to_excel(response_constraints_file)
+                            result = response_property_constraint_verify(
+                                python_code,
+                                field_name,
+                                example_value,
+                                api_response_text,
+                            )
 
-    if os.path.exists(request_response_constraints_file):
-        df = pd.read_excel(request_response_constraints_file)
-        # if not have col "Example_value" then add col "Example_value" to df
+                            if result == "-1":
+                                df.at[index, "verify_result"] = 0
+                                break
+                        except Exception as e:
+                            print(
+                                f"Error verifying {field_name} in {api_response}: {e}"
+                            )
+
+        # Save updated dataframe
+        df.to_excel(constraints_file, index=False)
+
+    def _verify_request_response_constraints(
+        self,
+        constraints_file: str,
+        api: str,
+        api_responses: List[str],
+        request_params: List[str],
+        request_bodies: List[str],
+    ) -> None:
+        """
+        Verify request-response constraints for an API.
+
+        Args:
+            constraints_file: Path to the constraints file
+            api: The API name
+            api_responses: List of API response files
+            request_params: List of request parameter files
+            request_bodies: List of request body files
+
+        Returns:
+            None
+        """
+        df = pd.read_excel(constraints_file)
+
+        # Add columns for example values and verification results if they don't exist
         if "Example_value" not in df.columns:
             df["Example_value"] = None
 
         if "verify_result" not in df.columns:
             df["verify_result"] = None
 
+        # Load OpenAPI specification
         openapi_spec_file = os.path.join(
-            api_spec_folder, api.replace(" API", ""), "openapi.json"
+            self.config.api_spec_folder, api.replace(" API", ""), "openapi.json"
         )
         openapi_spec = load_openapi_spec(openapi_spec_file)
+
+        # Process each constraint
         for index, row in df.iterrows():
             object_name = row["response resource"]
             field_name = row["attribute"]
+
+            # Find example value
             example_value = find_example_value(openapi_spec, object_name, field_name)
             df.at[index, "Example_value"] = str(example_value)
+
             request_info_part = row["part"]
+
+            # Determine which request files to use based on the part
             if request_info_part == "requestBody":
                 request_informations = request_bodies
             else:
                 request_informations = request_params
 
-            count_all_constraints += 1
-            if example_value is not None:
-                count_example_found += 1
+            self.count_all_constraints += 1
 
-                python_code = row["verification script"]
+            # Verify constraint if example value is found
+            if example_value is not None:
+                self.count_example_found += 1
+
+                # Get the verification script and request parameter
+                python_code = row.get("verification script")
                 request_param = row["corresponding attribute"]
 
-                if python_code is not None:
+                if python_code is not None and not pd.isna(python_code):
                     df.at[index, "verify_result"] = 1
+
+                    # Check each response against its corresponding request
                     for api_response, request_information in zip(
                         api_responses, request_informations
                     ):
-                        api_response = open(api_response, "r", encoding="utf-8").read()
-                        request_information = open(
-                            request_information, "r", encoding="utf-8"
-                        ).read()
+                        try:
+                            # Read API response file
+                            with open(api_response, "r", encoding="utf-8") as f:
+                                api_response_text = f.read()
 
-                        result = request_response_constraint_verify(
-                            python_code,
-                            request_information,
-                            request_param,
-                            field_name,
-                            example_value,
-                            api_response,
-                        )
-                        if result == "-1":
-                            df.at[index, "verify_result"] = 0
-                            break
+                            # Read request information file if it exists
+                            request_information_text = "{}"
+                            if os.path.exists(request_information):
+                                with open(
+                                    request_information, "r", encoding="utf-8"
+                                ) as f:
+                                    request_information_text = f.read()
 
-    if os.path.exists(request_response_constraints_file):
-        df.to_excel(request_response_constraints_file.replace(".xlsx", ".xlsx"))
+                            # Verify the constraint
+                            result = request_response_constraint_verify(
+                                python_code,
+                                request_information_text,
+                                request_param,
+                                field_name,
+                                example_value,
+                                api_response_text,
+                            )
 
-print(
-    f"Found example value for {count_example_found}/{count_all_constraints} constraints"
-)
+                            # Update result if constraint is not satisfied
+                            if result == "-1":
+                                df.at[index, "verify_result"] = 0
+                                break
+                        except Exception as e:
+                            print(
+                                f"Error verifying {field_name} in {api_response}: {e}"
+                            )
+
+        # Save updated dataframe
+        df.to_excel(constraints_file, index=False)
+
+
+def main() -> None:
+    """
+    Main entry point for constraint verification.
+
+    This function sets up the verification configuration and runs the
+    constraint verification process.
+    """
+    # Configure the verifier
+    config = VerificationConfig(
+        root_folder="approaches/rbctest_our_data",
+        api_spec_folder="RBCTest_dataset",
+        executable="python",
+    )
+
+    # Create and run the verifier
+    verifier = ConstraintVerifier(config)
+    verifier.verify_constraints(api_filter="Can")
+
+
+if __name__ == "__main__":
+    main()

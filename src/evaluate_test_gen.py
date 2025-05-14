@@ -1,113 +1,73 @@
 # /src/evaluate_test_gen.py
 
+"""
+Test Generation Evaluation Module
+
+This module evaluates and categorizes test generation results.
+It provides functions to categorize constraints and summarize test generation results.
+"""
+
 import os
 import pandas as pd
+from typing import Dict, List, Optional, Tuple, Any
+
+from utils.evaluation_utils import categorize_constraint, summarize_test_gen_response
+from models.evaluation_models import (
+    TestGenEvaluationConfig,
+    TestGenSummary,
+    CategoryStats,
+)
 
 
-def categorize_constraint(excel_file, knowledge_base_file):
-    print(f"Categoryzing {excel_file}")
-    df = pd.read_excel(excel_file, engine="openpyxl")
-    kb_df = pd.read_excel(knowledge_base_file, engine="openpyxl")
-    if df.empty or kb_df.empty:
-        return
-    for row, data in df.iterrows():
-        description = data["description"]
-        if "corresponding attribute description" in df.columns:
-            description = data["corresponding attribute description"]
+def evaluate_and_summarize_test_gen(config: TestGenEvaluationConfig) -> TestGenSummary:
+    """
+    Evaluate and summarize test generation results.
 
-        # find the description in the knowledge base
-        mask = kb_df["description"] == description
-        found_mapping = kb_df[mask]
-        if found_mapping.empty:
-            print(f"Cannot find {description}")
-            continue
-        category = found_mapping["category of constraint"].values[0]
-        df.at[row, "category of constraint"] = category
+    Args:
+        config: Configuration for test generation evaluation
 
-    df.to_excel(excel_file, index=False)
-
-
-def summarize_test_gen_response(excel_file, summary_dict, api_name):
-    global all_description
-    print(f"Excel file: {excel_file}")
-    # read excel file and make sure it is read as string
-    df = pd.read_excel(excel_file, engine="openpyxl", dtype=str)
-    if df.empty:
-        return summary_dict, pd.DataFrame()
-    # filter TP constraints
-    if (
-        "constraint_correctness" not in df.columns
-        or "correctness_of_script" not in df.columns
-    ):
-        print(f"Excel file {excel_file} does not have column constraint_correctness")
-        return summary_dict, pd.DataFrame()
-    tp_df = df[df["constraint_correctness"] == "TP"]
-    # correct test
-    print(tp_df["correctness_of_script"])
-    first_row = tp_df.at[tp_df.index[0], "correctness_of_script"]
-    if first_row == "correct" or first_row == "incorrect":
-        correct_df = tp_df[tp_df["correctness_of_script"] == "correct"]
-    else:
-        correct_df = tp_df[tp_df["correctness_of_script"] == "True"]
-    # correctness_of_script is correct and status is satisfied
-    truely_satisfied_df = correct_df[(correct_df["status"] == "satisfied")]
-    truely_mismatched_df = correct_df[(correct_df["status"] == "mismatched")]
-    truely_unknown_df = correct_df[correct_df["status"] == "unknown"]
-
-    summary_dict[api_name] = {
-        "All": len(df),
-        "No test gen": len(tp_df),
-        "correct": len(correct_df),
-        "TP_satisfied": len(truely_satisfied_df),
-        "TP_mismatched": len(truely_mismatched_df),
-        "unknown": len(truely_unknown_df),
-    }
-
-    api_path = os.path.dirname(excel_file)
-    base_name = os.path.basename(excel_file)
-    output_path = os.path.join(api_path, f"annalyze_{base_name}")
-
-    truely_mismatched_df["API"] = api_name
-
-    return summary_dict, truely_mismatched_df
-
-
-if __name__ == "__main__":
-    root_exp = "approaches/rbctest_our_data"
-
-    summarize_test_gen_for_response = {}
-    summarize_test_gen_for_request = {}
-    api_names = []
+    Returns:
+        TestGenSummary object containing evaluation results
+    """
+    # Initialize dictionaries for storing summaries
+    summarize_test_gen_for_response: Dict[str, Dict[str, int]] = {}
+    summarize_test_gen_for_request: Dict[str, Dict[str, int]] = {}
+    api_names: List[str] = []
     all_true_mismatched = pd.DataFrame()
 
+    # Create a TestGenSummary object to return
+    summary = TestGenSummary()
+
+    # Get list of API folders
     apis = [
         api
-        for api in os.listdir(root_exp)
-        if os.path.isdir(os.path.join(root_exp, api)) and not api.startswith(".")
+        for api in os.listdir(config.root_experiment_folder)
+        if os.path.isdir(os.path.join(config.root_experiment_folder, api))
+        and not api.startswith(".")
     ]
     apis.sort()
 
+    # Process each API folder
     for api in apis:
-        # if "Canada" in api:
-        #     continue
         api_name = api.replace(" API", "")
         api_names.append(api_name)
-        api_path = os.path.join(root_exp, api)
-        excel_files = [
-            f
-            for f in os.listdir(api_path)
-            if f.endswith(".xlsx") and not f.startswith("~$") and not f.startswith(".")
-        ]
-        print(f"API: {api}")
+        api_path = os.path.join(config.root_experiment_folder, api)
 
-        response_excel = None
-        request_excel = None
-
+        # Find Excel files for constraints
         response_excel = os.path.join(api_path, "response_property_constraints.xlsx")
         request_excel = os.path.join(api_path, "request_response_constraints.xlsx")
 
+        print(f"API: {api}")
         print(f"Found files: {response_excel}, {request_excel}")
 
+        # Categorize constraints if knowledge base file is provided
+        if config.knowledge_base_file and os.path.exists(config.knowledge_base_file):
+            if os.path.exists(response_excel):
+                categorize_constraint(response_excel, config.knowledge_base_file)
+            if os.path.exists(request_excel):
+                categorize_constraint(request_excel, config.knowledge_base_file)
+
+        # Summarize response property constraints
         if os.path.exists(response_excel):
             summarize_test_gen_for_response, true_mismatched = (
                 summarize_test_gen_response(
@@ -116,6 +76,24 @@ if __name__ == "__main__":
             )
             all_true_mismatched = pd.concat([all_true_mismatched, true_mismatched])
 
+            # Add to summary object
+            category_stats = CategoryStats(
+                all_count=summarize_test_gen_for_response[api_name]["All"],
+                no_test_gen_count=summarize_test_gen_for_response[api_name][
+                    "No test gen"
+                ],
+                correct_count=summarize_test_gen_for_response[api_name]["correct"],
+                tp_satisfied_count=summarize_test_gen_for_response[api_name][
+                    "TP_satisfied"
+                ],
+                tp_mismatched_count=summarize_test_gen_for_response[api_name][
+                    "TP_mismatched"
+                ],
+                unknown_count=summarize_test_gen_for_response[api_name]["unknown"],
+            )
+            summary.api_stats[f"{api_name}_response"] = category_stats
+
+        # Summarize request-response constraints
         if os.path.exists(request_excel):
             summarize_test_gen_for_request, true_mismatched = (
                 summarize_test_gen_response(
@@ -124,75 +102,160 @@ if __name__ == "__main__":
             )
             all_true_mismatched = pd.concat([all_true_mismatched, true_mismatched])
 
-    # add a row for total and average precision
-    total_request = {
-        "All": 0,
-        "No test gen": 0,
-        "correct": 0,
-        "TP_satisfied": 0,
-        "FP_satisfied": 0,
-        "TP_mismatched": 0,
-        "FP_mismatched": 0,
-        "unknown": 0,
-    }
-    total_response = {
-        "All": 0,
-        "No test gen": 0,
-        "correct": 0,
-        "TP_satisfied": 0,
-        "FP_satisfied": 0,
-        "TP_mismatched": 0,
-        "FP_mismatched": 0,
-        "unknown": 0,
-    }
-    for api in api_names:
-        if api not in summarize_test_gen_for_response:
-            summarize_test_gen_for_response[api] = {
-                "All": 0,
-                "No test gen": 0,
-                "correct": 0,
-                "TP_satisfied": 0,
-                "FP_satisfied": 0,
-                "TP_mismatched": 0,
-                "FP_mismatched": 0,
-                "unknown": 0,
-            }
-        else:
-            for key in summarize_test_gen_for_response[api]:
-                total_response[key] += summarize_test_gen_for_response[api][key]
+            # Add to summary object
+            category_stats = CategoryStats(
+                all_count=summarize_test_gen_for_request[api_name]["All"],
+                no_test_gen_count=summarize_test_gen_for_request[api_name][
+                    "No test gen"
+                ],
+                correct_count=summarize_test_gen_for_request[api_name]["correct"],
+                tp_satisfied_count=summarize_test_gen_for_request[api_name][
+                    "TP_satisfied"
+                ],
+                tp_mismatched_count=summarize_test_gen_for_request[api_name][
+                    "TP_mismatched"
+                ],
+                unknown_count=summarize_test_gen_for_request[api_name]["unknown"],
+            )
+            summary.api_stats[f"{api_name}_request"] = category_stats
 
-        if api not in summarize_test_gen_for_request:
-            summarize_test_gen_for_request[api] = {
-                "All": 0,
-                "No test gen": 0,
-                "correct": 0,
-                "TP_satisfied": 0,
-                "FP_satisfied": 0,
-                "TP_mismatched": 0,
-                "FP_mismatched": 0,
-                "unknown": 0,
-            }
-        else:
-            for key in summarize_test_gen_for_request[api]:
-                total_request[key] += summarize_test_gen_for_request[api][key]
+    # Calculate totals for response property constraints
+    total_response = calculate_totals(summarize_test_gen_for_response, api_names)
     summarize_test_gen_for_response["Total"] = total_response
+
+    # Add total response stats to summary
+    summary.total_stats.all_count += total_response["All"]
+    summary.total_stats.no_test_gen_count += total_response["No test gen"]
+    summary.total_stats.correct_count += total_response["correct"]
+    summary.total_stats.tp_satisfied_count += total_response["TP_satisfied"]
+    summary.total_stats.tp_mismatched_count += total_response["TP_mismatched"]
+    summary.total_stats.unknown_count += total_response["unknown"]
+
+    # Calculate totals for request-response constraints
+    total_request = calculate_totals(summarize_test_gen_for_request, api_names)
     summarize_test_gen_for_request["Total"] = total_request
 
-    with pd.ExcelWriter(f"{root_exp}/test_gen_summary.xlsx") as writer:
-        df = pd.DataFrame.from_dict(summarize_test_gen_for_response, orient="index")
-        df.sort_index(inplace=True)
-        # remove col FP_satisfied and FP_mismatched
-        df.drop(columns=["FP_satisfied", "FP_mismatched"], inplace=True)
+    # Add total request stats to summary
+    summary.total_stats.all_count += total_request["All"]
+    summary.total_stats.no_test_gen_count += total_request["No test gen"]
+    summary.total_stats.correct_count += total_request["correct"]
+    summary.total_stats.tp_satisfied_count += total_request["TP_satisfied"]
+    summary.total_stats.tp_mismatched_count += total_request["TP_mismatched"]
+    summary.total_stats.unknown_count += total_request["unknown"]
 
-        df.to_excel(writer, sheet_name="response")
+    # Save results to Excel file
+    save_summary_to_excel(
+        config.output_file,
+        summarize_test_gen_for_response,
+        summarize_test_gen_for_request,
+        all_true_mismatched,
+    )
 
-        df = pd.DataFrame.from_dict(summarize_test_gen_for_request, orient="index")
-        df.sort_index(inplace=True)
-        # remove col FP_satisfied and FP_mismatched
-        df.drop(columns=["FP_satisfied", "FP_mismatched"], inplace=True)
+    return summary
 
-        df.to_excel(writer, sheet_name="request")
 
-        all_true_mismatched.to_excel(writer, sheet_name="all_true_mismatched")
+def calculate_totals(
+    summary_dict: Dict[str, Dict[str, int]], api_names: List[str]
+) -> Dict[str, int]:
+    """
+    Calculate totals across all APIs for a summary dictionary.
 
+    Args:
+        summary_dict: Dictionary containing summaries for each API
+        api_names: List of API names
+
+    Returns:
+        Dictionary containing total counts
+    """
+    total = {
+        "All": 0,
+        "No test gen": 0,
+        "correct": 0,
+        "TP_satisfied": 0,
+        "TP_mismatched": 0,
+        "unknown": 0,
+    }
+
+    for api in api_names:
+        if api not in summary_dict:
+            summary_dict[api] = {
+                "All": 0,
+                "No test gen": 0,
+                "correct": 0,
+                "TP_satisfied": 0,
+                "TP_mismatched": 0,
+                "unknown": 0,
+            }
+        else:
+            for key in summary_dict[api]:
+                if key in total:
+                    total[key] += summary_dict[api][key]
+
+    return total
+
+
+def save_summary_to_excel(
+    output_file: str,
+    response_summary: Dict[str, Dict[str, int]],
+    request_summary: Dict[str, Dict[str, int]],
+    true_mismatched_df: pd.DataFrame,
+) -> None:
+    """
+    Save summary results to an Excel file.
+
+    Args:
+        output_file: Path to the output Excel file
+        response_summary: Summary of response property constraints
+        request_summary: Summary of request-response constraints
+        true_mismatched_df: DataFrame of mismatched constraints
+
+    Returns:
+        None
+    """
+    with pd.ExcelWriter(output_file) as writer:
+        # Save response property summary
+        df_response = pd.DataFrame.from_dict(response_summary, orient="index")
+        df_response.sort_index(inplace=True)
+        df_response.to_excel(writer, sheet_name="response")
+
+        # Save request-response summary
+        df_request = pd.DataFrame.from_dict(request_summary, orient="index")
+        df_request.sort_index(inplace=True)
+        df_request.to_excel(writer, sheet_name="request")
+
+        # Save true mismatched constraints
+        if not true_mismatched_df.empty:
+            true_mismatched_df.to_excel(writer, sheet_name="all_true_mismatched")
+
+    print(f"Summary saved to {output_file}")
+
+
+def main() -> None:
+    """
+    Main entry point for evaluating test generation.
+
+    This function sets up the evaluation configuration and runs the
+    test generation evaluation and summarization.
+    """
+    # Configure the evaluation
+    config = TestGenEvaluationConfig(
+        root_experiment_folder="approaches/rbctest_our_data",
+        output_file="approaches/rbctest_our_data/test_gen_summary.xlsx",
+        knowledge_base_file=None,
+    )
+
+    # Run the evaluation and get summary
+    summary = evaluate_and_summarize_test_gen(config)
+
+    # Print summary statistics
+    print("\nTest Generation Summary:")
+    print(f"Total constraints: {summary.total_stats.all_count}")
+    print(f"Correct test generations: {summary.total_stats.correct_count}")
+    print(f"Satisfied constraints: {summary.total_stats.tp_satisfied_count}")
+    print(f"Mismatched constraints: {summary.total_stats.tp_mismatched_count}")
+    print(f"Unknown status: {summary.total_stats.unknown_count}")
     print("Done!")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,5 @@
+# /src/constant/schema_prompts.py
+
 """
 Schema-related prompt constants used for understanding API schemas.
 """

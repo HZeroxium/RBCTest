@@ -1,3 +1,5 @@
+# /src/constant/__init__.py
+
 """
 Constants package for prompt templates used in the RBCTest project.
 

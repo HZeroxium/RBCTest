@@ -1,21 +1,41 @@
 # /src/constraints_test_generation.py
 
-import re
+"""
+Constraints Test Generation Module
+
+This module handles the generation of verification scripts for API constraints,
+both for response property constraints and request-response constraints.
+"""
+
 import os
 import json
 import dotenv
 import pandas as pd
-import urllib.parse
-import openai
 import yaml
+import openai
+from pathlib import Path
+from typing import Dict, List, Optional, Literal, Any, Union, Tuple, Set
+
 from utils.openapi_utils import (
     load_openapi,
     simplify_openapi,
     get_simplified_schema,
     get_response_body_name_and_type,
 )
-from utils.gptcall import GPTChatCompletion
+from utils.llm_utils import llm_chat_completion
 from utils.dict_utils import filter_dict_by_key
+from utils.text_extraction import extract_python_code
+
+
+from models.verification_script_models import (
+    VerificationScriptConfig,
+    ConstraintInfo,
+    RequestResponseConstraintInfo,
+    VerificationScriptResult,
+    ResponsePropertyVerificationResult,
+    RequestResponseVerificationResult,
+)
+
 from constant import (
     CONST_INSIDE_RESPONSEBODY_SCRIPT_GEN_PROMPT,
     CONST_RESPONSEBODY_PARAM_SCRIPT_GEN_PROMPT,
@@ -23,182 +43,200 @@ from constant import (
     TEST_INPUT_PARAM_EXECUTION_SCRIPT,
 )
 
+# Load environment variables and API keys
 dotenv.load_dotenv()
 openai.api_key = os.getenv("OPENAI_KEY")
 
 
-def extract_response_field(response, field):
-    if response is None:
-        return None
+def export_file(content: str, directory: str, filename: str) -> None:
+    """
+    Export content to a file, creating directories if needed
 
-    if f"```{field}" in response:
-        pattern = rf"```{field}\n(.*?)```"
-        match = re.search(pattern, response, re.DOTALL)
+    Args:
+        content: Content to write to file
+        directory: Directory path to save the file in
+        filename: Name of the file to create
+    """
+    os.makedirs(directory, exist_ok=True)
+    file_path = Path(directory) / filename
 
-        if match:
-            answer = match.group(1)
-            return answer.strip()
-        else:
-            return None
-    else:
-        return response.lower()
-
-
-def unescape_string(escaped_str):
-    try:
-        return bytes(escaped_str, "utf-8").decode("unicode_escape")
-    except:
-        return escaped_str
-
-
-def is_valid_url(url):
-    parsed_url = urllib.parse.urlparse(url)
-    return all([parsed_url.scheme, parsed_url.netloc])
-
-
-def parse_request_info_from_query_parameters(query_parameters):
-    request_info = {}
-    # query_parameters is a string in the format of "key1=value1&key2=value2&..."
-    if query_parameters:
-        query_parameters = urllib.parse.parse_qs(query_parameters)
-        for key, value in query_parameters.items():
-            request_info[key] = value[0]
-    return json.dumps(request_info)
-
-
-def extract_python_code(response):
-    if response is None:
-        return None
-
-    pattern = r"```python\n(.*?)```"
-    match = re.search(pattern, response, re.DOTALL)
-
-    if match:
-        python_code = match.group(1)
-        return python_code
-    else:
-        return None
-
-
-def execute_response_constraint_verification_script(python_code, api_response):
-    script_string = TEST_EXECUTION_SCRIPT.format(
-        generated_verification_script=python_code, api_response=api_response
-    )
-
-    namespace = {}
-    try:
-        exec(script_string, namespace)
-    except Exception as e:
-        print(f"Error executing the script: {e}")
-        return script_string, "code error"
-
-    code = namespace["status"]
-    status = ""
-    if code == -1:
-        status = "mismatched"
-    elif code == 1:
-        status = "satisfied"
-    else:
-        status = "unknown"
-
-    return script_string, status
-
-
-def execute_request_parameter_constraint_verification_script(
-    python_code, api_response, request_info
-):
-    script_string = TEST_INPUT_PARAM_EXECUTION_SCRIPT.format(
-        generated_verification_script=python_code,
-        api_response=api_response,
-        request_info=request_info,
-    )
-
-    namespace = {}
-    try:
-        exec(script_string, namespace)
-    except Exception as e:
-        print(f"Error executing the script: {e}")
-        return script_string, "code error"
-
-    code = namespace["status"]
-    status = ""
-    if code == -1:
-        status = "mismatched"
-    elif code == 1:
-        status = "satisfied"
-    else:
-        status = "unknown"
-
-    return script_string, status
-
-
-def export_file(prompt, response, filename):
-    with open(filename, "a") as file:
-        file.write(f"Prompt:\n{prompt}\n\n")
-        file.write(f"Response:\n{response}\n")
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(content)
 
 
 class VerificationScriptGenerator:
+    """
+    Generator for API constraint verification scripts.
+
+    This class handles the generation of verification scripts for both
+    response property constraints and request-response constraints.
+    """
+
     def __init__(
         self,
-        service_name,
-        experiment_dir,
-        request_response_constraints_file=None,
-        response_property_constraints_file=None,
+        service_name: str,
+        experiment_dir: str,
+        request_response_constraints_file: Optional[str] = None,
+        response_property_constraints_file: Optional[str] = None,
     ):
+        """
+        Initialize the verification script generator.
+
+        Args:
+            service_name: Name of the service to generate verification scripts for
+            experiment_dir: Directory to store experiment outputs
+            request_response_constraints_file: Path to file with request-response constraints
+            response_property_constraints_file: Path to file with response property constraints
+        """
+        # Load OpenAPI specification
         self.openapi_spec = load_openapi(f"RBCTest_dataset/{service_name}/openapi.json")
         self.simplified_openapi = simplify_openapi(self.openapi_spec)
         self.simplified_schemas = get_simplified_schema(self.openapi_spec)
+
+        # Setup experiment directory
         self.experiment_dir = experiment_dir
+        os.makedirs(self.experiment_dir, exist_ok=True)
+
+        # Save simplified OpenAPI for debugging
         with open("simplified_openapi.json", "w") as file:
             json.dump(self.simplified_openapi, file, indent=2)
+
+        # Service information
         self.service_name = service_name
-        service_name = self.openapi_spec["info"]["title"]
-        self.experiment_dir = f"{experiment_dir}/{service_name}"
+        self.api_title = self.openapi_spec["info"]["title"]
+        self.experiment_dir = f"{experiment_dir}/{self.api_title}"
+        os.makedirs(self.experiment_dir, exist_ok=True)
 
-        self.generated_verification_scripts = []
+        # Store generated verification scripts
+        self.generated_verification_scripts: List[
+            Union[ResponsePropertyVerificationResult, RequestResponseVerificationResult]
+        ] = []
 
+        # Process constraint files if provided
         if request_response_constraints_file:
-            self.request_response_constraints_file = request_response_constraints_file
-            self.request_response_constraints_df = pd.read_excel(
-                request_response_constraints_file, sheet_name="Sheet1"
+            self._process_request_response_constraints(
+                request_response_constraints_file
             )
-            self.request_response_constraints_df = (
-                self.request_response_constraints_df.fillna("")
-            )
-            self.verify_request_parameter_constraints()
 
         if response_property_constraints_file:
-            self.response_property_constraints_file = response_property_constraints_file
-            self.response_property_constraints_df = pd.read_excel(
-                response_property_constraints_file, sheet_name="Sheet1"
+            self._process_response_property_constraints(
+                response_property_constraints_file
             )
-            self.response_property_constraints_df = (
-                self.response_property_constraints_df.fillna("")
-            )
-            self.verify_inside_response_body_constraints()
 
-    def track_generated_script(self, generating_script):
+    def _process_request_response_constraints(self, file_path: str) -> None:
+        """
+        Process request-response constraints from an Excel file.
+
+        Args:
+            file_path: Path to the Excel file containing request-response constraints
+        """
+        self.request_response_constraints_file = file_path
+        self.request_response_constraints_df = pd.read_excel(
+            file_path, sheet_name="Sheet1"
+        )
+        self.request_response_constraints_df = (
+            self.request_response_constraints_df.fillna("")
+        )
+        self.verify_request_parameter_constraints()
+
+    def _process_response_property_constraints(self, file_path: str) -> None:
+        """
+        Process response property constraints from an Excel file.
+
+        Args:
+            file_path: Path to the Excel file containing response property constraints
+        """
+        self.response_property_constraints_file = file_path
+        self.response_property_constraints_df = pd.read_excel(
+            file_path, sheet_name="Sheet1"
+        )
+        self.response_property_constraints_df = (
+            self.response_property_constraints_df.fillna("")
+        )
+        self.verify_inside_response_body_constraints()
+
+    def track_generated_script(
+        self, generating_script: Dict[str, str]
+    ) -> Optional[
+        Union[ResponsePropertyVerificationResult, RequestResponseVerificationResult]
+    ]:
+        """
+        Check if a script with the same parameters has already been generated.
+
+        Args:
+            generating_script: Dictionary with script parameters
+
+        Returns:
+            The previously generated script result if found, None otherwise
+        """
         for generated_script in self.generated_verification_scripts:
             if (
-                generated_script["response_resource"]
+                generated_script.response_resource
                 == generating_script["response_resource"]
-                and generated_script["attribute"] == generating_script["attribute"]
-                and generated_script["description"] == generating_script["description"]
-                and generated_script["operation"] == generating_script["operation"]
+                and generated_script.attribute == generating_script["attribute"]
+                and generated_script.description == generating_script["description"]
+                and generated_script.operation == generating_script["operation"]
             ):
                 return generated_script
         return None
 
-    def verify_inside_response_body_constraints(self):
-        verification_scripts = [""] * len(self.response_property_constraints_df)
-        executable_scripts = [""] * len(self.response_property_constraints_df)
-        statuses = [""] * len(self.response_property_constraints_df)
+    def track_generated_request_parameter_script(
+        self, generating_script: Dict[str, str]
+    ) -> Optional[RequestResponseVerificationResult]:
+        """
+        Check if a request parameter script with the same parameters has already been generated.
 
-        confirmations = [""] * len(self.response_property_constraints_df)
-        revised_scripts = [""] * len(self.response_property_constraints_df)
-        revised_executable_scripts = [""] * len(self.response_property_constraints_df)
-        revised_script_statuses = [""] * len(self.response_property_constraints_df)
+        Args:
+            generating_script: Dictionary with script parameters
+
+        Returns:
+            The previously generated request parameter script result if found, None otherwise
+        """
+        for generated_script in self.generated_verification_scripts:
+            # Skip non-RequestResponseVerificationResult entries
+            if not isinstance(generated_script, RequestResponseVerificationResult):
+                continue
+
+            require_keys = [
+                "response_resource",
+                "attribute",
+                "description",
+                "corresponding_operation",
+                "corresponding_attribute",
+                "corresponding_description",
+                "operation",
+            ]
+
+            match = True
+            for key in require_keys:
+                if getattr(generated_script, key) != generating_script[key]:
+                    match = False
+                    break
+
+            if match:
+                return generated_script
+
+        return None
+
+    def verify_inside_response_body_constraints(self) -> None:
+        """
+        Verify constraints inside response bodies.
+
+        This method processes each constraint in the response property constraints dataframe,
+        generates a verification script for it, and updates the dataframe with the results.
+        """
+        if not hasattr(self, "response_property_constraints_df"):
+            print("No response property constraints dataframe found.")
+            return
+
+        df_length = len(self.response_property_constraints_df)
+        verification_scripts = [""] * df_length
+        executable_scripts = [""] * df_length
+        statuses = [""] * df_length
+        confirmations = [""] * df_length
+        revised_scripts = [""] * df_length
+        revised_executable_scripts = [""] * df_length
+        revised_script_statuses = [""] * df_length
 
         for index, row in self.response_property_constraints_df.iterrows():
             response_resource = row["response resource"]
@@ -210,6 +248,7 @@ class VerificationScriptGenerator:
                 f"Generating verification script for {response_resource} - {attribute} - {description}"
             )
 
+            # Create script tracking information
             generating_script = {
                 "operation": operation,
                 "response_resource": response_resource,
@@ -224,19 +263,21 @@ class VerificationScriptGenerator:
                 "revised_status": "",
             }
 
+            # Check if we've already generated this script
             generated_script = self.track_generated_script(generating_script)
             if generated_script:
-                verification_scripts[index] = generated_script["verification_script"]
-                executable_scripts[index] = generated_script["executable_script"]
-                statuses[index] = generated_script["status"]
-                confirmations[index] = generated_script["confirmation"]
-                revised_scripts[index] = generated_script["revised_script"]
-                revised_executable_scripts[index] = generated_script[
-                    "revised_executable_script"
-                ]
-                revised_script_statuses[index] = generated_script["revised_status"]
+                verification_scripts[index] = generated_script.verification_script
+                executable_scripts[index] = generated_script.executable_script
+                statuses[index] = generated_script.status
+                confirmations[index] = generated_script.confirmation
+                revised_scripts[index] = generated_script.revised_script
+                revised_executable_scripts[index] = (
+                    generated_script.revised_executable_script
+                )
+                revised_script_statuses[index] = generated_script.revised_status
                 continue
 
+            # Get response specification information
             response_specification = self.simplified_openapi[operation].get(
                 "responseBody", {}
             )
@@ -244,12 +285,13 @@ class VerificationScriptGenerator:
                 response_specification, attribute
             )
 
-            response_schema_structure = ""
+            # Get response schema structure
             main_response_schema_name, response_type = get_response_body_name_and_type(
                 self.openapi_spec, operation
             )
             print(f"Main response schema name: {main_response_schema_name}")
             print(f"Response type: {response_type}")
+
             if not main_response_schema_name:
                 response_schema_structure = response_type
             else:
@@ -260,12 +302,20 @@ class VerificationScriptGenerator:
                         f"array of {main_response_schema_name} objects"
                     )
 
+            # Prepare response schema specification
             response_schema_specification = ""
             if main_response_schema_name:
-                response_schema_specification = f"- Data structure of the response body: {response_schema_structure}\n- Specification of {main_response_schema_name} object: {json.dumps(response_specification)}"
+                response_schema_specification = (
+                    f"- Data structure of the response body: {response_schema_structure}\n"
+                    f"- Specification of {main_response_schema_name} object: {json.dumps(response_specification)}"
+                )
             else:
-                response_schema_specification = f"- Data structure of the response body: {response_schema_structure}\n- Specification: {json.dumps(response_specification)}"
+                response_schema_specification = (
+                    f"- Data structure of the response body: {response_schema_structure}\n"
+                    f"- Specification: {json.dumps(response_specification)}"
+                )
 
+            # Extract additional attribute specifications
             attribute_spec = self.simplified_schemas.get(response_resource, {}).get(
                 attribute, ""
             )
@@ -278,6 +328,7 @@ class VerificationScriptGenerator:
                 .get("properties", {})
                 .get(attribute, "")
             )
+
             if not attribute_spec:
                 attribute_spec = (
                     self.openapi_spec.get("definitions", {})
@@ -289,6 +340,7 @@ class VerificationScriptGenerator:
             if attribute_spec:
                 other_description = json.dumps(attribute_spec)
 
+            # Generate verification script
             python_verification_script_generation_prompt = (
                 CONST_INSIDE_RESPONSEBODY_SCRIPT_GEN_PROMPT.format(
                     attribute=attribute,
@@ -296,87 +348,63 @@ class VerificationScriptGenerator:
                     response_schema_specification=response_schema_specification,
                 )
             )
+
             print(python_verification_script_generation_prompt)
 
+            # Log the prompt for reference
+            os.makedirs(self.experiment_dir, exist_ok=True)
             with open(f"{self.experiment_dir}/prompts.txt", "a") as file:
                 file.write(
                     f"Prompt for constraint {index}:\n{python_verification_script_generation_prompt}\n"
                 )
 
-            python_verification_script_response = GPTChatCompletion(
+            # Call LLM to generate the verification script
+            python_verification_script_response = llm_chat_completion(
                 python_verification_script_generation_prompt, model="gpt-4-turbo"
             )
 
-            # export_file(python_verification_script_generation_prompt, python_verification_script_response, f"constraint_{index}.txt")
-
             print(f"Generated script: {python_verification_script_response}")
 
+            # Extract the Python code from the response
             python_verification_script = extract_python_code(
                 python_verification_script_response
             )
 
+            # In the original code, script execution is commented out
             # script_string, status = execute_response_constraint_verification_script(python_verification_script, row['API response'])
-            script_string = verification_scripts
+            script_string = ""
             status = "unknown"
 
+            # Update the arrays with results
             verification_scripts[index] = python_verification_script
             executable_scripts[index] = script_string
             statuses[index] = status
 
-            generating_script["verification_script"] = python_verification_script
-            generating_script["executable_script"] = script_string
-            generating_script["status"] = status
+            # Create a result object and add to tracking
+            result = ResponsePropertyVerificationResult(
+                operation=operation,
+                response_resource=response_resource,
+                attribute=attribute,
+                description=description,
+                verification_script=python_verification_script,
+                executable_script=script_string,
+                status=status,
+                confirmation="",
+                revised_script="",
+                revised_executable_script="",
+                revised_status="",
+            )
 
-            self.generated_verification_scripts.append(generating_script)
+            self.generated_verification_scripts.append(result)
 
-            # Confirm the generated script
-            # python_verification_script_confirm_prompt = CONST_INSIDE_RESPONSEBODY_SCRIPT_CONFIRM_PROMPT.format(
-            #     attribute = attribute,
-            #     description = description,
-            #     response_schema_specification = response_schema_specification,
-            #     generated_verification_script = python_verification_script
-            # )
-
-            # confirmation_response = GPTChatCompletion(python_verification_script_confirm_prompt, model="gpt-4-turbo")
-
-            # export_file(python_verification_script_confirm_prompt, confirmation_response, f"constraint_{index}.txt")
-
-            # firstline = confirmation_response.split("\n")[0]
-
-            # if "yes" in firstline:
-            #     confirmations[index] = "yes"
-            # else:
-            #     confirmation_answer = "no"
-
-            #     print(f"Confirmation answer: {confirmation_answer}")
-            #     revised_script = extract_python_code(confirmation_response)
-            #     revised_script = unescape_string(revised_script)
-
-            #     confirmations[index] = confirmation_answer
-            #     revised_scripts[index] = revised_script
-
-            #     print(f"Revised script: {revised_script}")
-
-            #     revised_script_string, revised_status = execute_response_constraint_verification_script(revised_script, row['API response'])
-
-            #     revised_script_statuses[index] = revised_status
-            #     revised_executable_scripts[index] = revised_script_string
-
-            #     generating_script["confirmation"] = confirmation_answer
-            #     generating_script["revised_script"] = revised_script
-            #     generating_script["revised_executable_script"] = revised_script_string
-            #     generating_script["revised_status"] = revised_status
-
+            # Update the dataframe with new values
             self.response_property_constraints_df["verification script"] = pd.array(
                 verification_scripts
             )
-            # self.response_property_constraints_df['executable script'] = pd.array(executable_scripts)
             self.response_property_constraints_df["status"] = pd.array(statuses)
-
             self.response_property_constraints_df["script confirmation"] = pd.array(
                 confirmations
             )
-
             self.response_property_constraints_df["revised script"] = pd.array(
                 revised_scripts
             )
@@ -387,40 +415,33 @@ class VerificationScriptGenerator:
                 revised_script_statuses
             )
 
+            # Save the dataframe after each iteration
             self.response_property_constraints_df.to_excel(
                 self.response_property_constraints_file,
                 sheet_name="Sheet1",
                 index=False,
             )
 
-    def track_generated_request_parameter_script(self, generating_script):
-        for generated_script in self.generated_verification_scripts:
-            require_keys = [
-                "response_resource",
-                "attribute",
-                "description",
-                "corresponding_operation",
-                "corresponding_attribute",
-                "corresponding_description",
-                "operation",
-            ]
-            for key in require_keys:
-                if generated_script[key] != generating_script[key]:
-                    return None
-            return generated_script
-        return None
+    def verify_request_parameter_constraints(self) -> None:
+        """
+        Verify request parameter constraints.
 
-    def verify_request_parameter_constraints(self):
-        verification_scripts = [""] * len(self.request_response_constraints_df)
-        executable_scripts = [""] * len(self.request_response_constraints_df)
+        This method processes each constraint in the request-response constraints dataframe,
+        generates a verification script for it, and updates the dataframe with the results.
+        """
+        if not hasattr(self, "request_response_constraints_df"):
+            print("No request response constraints dataframe found.")
+            return
 
-        statuses = [""] * len(self.request_response_constraints_df)
-        confirmations = [""] * len(self.request_response_constraints_df)
-        revised_scripts = [""] * len(self.request_response_constraints_df)
-        revised_executable_scripts = [""] * len(self.request_response_constraints_df)
-        revised_script_statuses = [""] * len(self.request_response_constraints_df)
+        df_length = len(self.request_response_constraints_df)
+        verification_scripts = [""] * df_length
+        executable_scripts = [""] * df_length
+        statuses = [""] * df_length
+        confirmations = [""] * df_length
+        revised_scripts = [""] * df_length
+        revised_executable_scripts = [""] * df_length
+        revised_script_statuses = [""] * df_length
 
-        self.generated_verification_scripts_responsebody_input_parameter = []
         for index, row in self.request_response_constraints_df.iterrows():
             response_resource = row["response resource"]
             attribute = row["attribute"]
@@ -429,55 +450,39 @@ class VerificationScriptGenerator:
             corresponding_part = row["part"]
             corresponding_attribute = row["corresponding attribute"]
             corresponding_description = row["corresponding attribute description"]
-            # *******
-            constraint_correctness = row["constraint_correctness"]
-            tp = row["tp"]
+
+            # Check if the constraint should be processed
+            constraint_correctness = row.get("constraint_correctness", "")
+            tp = row.get("tp", "")
             if not (constraint_correctness == "TP" and tp == 0):
                 print(
                     f"Skipping {response_resource} - {attribute} - {description} As it has been processed before"
                 )
                 continue
 
-            verification_script = (
-                row["verification script"] if "verification script" in row else None
-            )
-            executable_script = (
-                row["executable script"] if "executable script" in row else None
-            )
-            status = row["status"] if "status" in row else None
-            confirmation = (
-                row["script confirmation"] if "script confirmation" in row else None
-            )
-            revised_script = row["revised script"] if "revised script" in row else None
-            revised_executable_script = (
-                row["revised executable script"]
-                if "revised executable script" in row
-                else None
-            )
-            revised_status = row["revised status"] if "revised status" in row else None
+            # Extract previous script information if available
+            verification_script = row.get("verification script", None)
+            executable_script = row.get("executable script", None)
+            status = row.get("status", None)
+            confirmation = row.get("script confirmation", None)
+            revised_script = row.get("revised script", None)
+            revised_executable_script = row.get("revised executable script", None)
+            revised_status = row.get("revised status", None)
 
             print(f"Previous verification script: {verification_script}")
             print(f"Previous executable script: {executable_script}")
             print(f"Previous status: {status}")
 
-            # if verification_script and executable_script and status:
-            #     verification_scripts[index] = verification_script
-            #     executable_scripts[index] = executable_script
-            #     statuses[index] = status
-            #     confirmations[index] = confirmation
-            #     revised_scripts[index] = revised_script
-            #     revised_executable_scripts[index] = revised_executable_script
-            #     revised_script_statuses[index] = revised_status
-            #     print(f"Skipping {response_resource} - {attribute} - {description} As it has been processed before")
-            #     continue
-
+            # Get the operation
             operation = corresponding_operation[0]
+
+            # Create script tracking information
             generating_script = {
                 "operation": operation,
                 "response_resource": response_resource,
                 "attribute": attribute,
                 "description": description,
-                "corresponding_operation": corresponding_operation,
+                "corresponding_operation": corresponding_operation[0],
                 "corresponding_attribute": corresponding_attribute,
                 "corresponding_description": corresponding_description,
                 "verification_script": "",
@@ -489,33 +494,37 @@ class VerificationScriptGenerator:
                 "revised_status": "",
             }
 
+            # Check if we've already generated this script
             generated_script = self.track_generated_request_parameter_script(
                 generating_script
             )
             if generated_script:
-                verification_scripts[index] = generated_script["verification_script"]
-                executable_scripts[index] = generated_script["executable_script"]
-                statuses[index] = generated_script["status"]
-                confirmations[index] = generated_script["confirmation"]
-                revised_scripts[index] = generated_script["revised_script"]
-                revised_executable_scripts[index] = generated_script[
-                    "revised_executable_script"
-                ]
-                revised_script_statuses[index] = generated_script["revised_status"]
+                verification_scripts[index] = generated_script.verification_script
+                executable_scripts[index] = generated_script.executable_script
+                statuses[index] = generated_script.status
+                confirmations[index] = generated_script.confirmation
+                revised_scripts[index] = generated_script.revised_script
+                revised_executable_scripts[index] = (
+                    generated_script.revised_executable_script
+                )
+                revised_script_statuses[index] = generated_script.revised_status
                 continue
 
+            # Get response specification information
             response_specification = self.simplified_openapi[operation].get(
                 "responseBody", {}
             )
             response_specification = filter_dict_by_key(
                 response_specification, attribute
             )
-            response_schema_structure = ""
+
+            # Get response schema structure
             main_response_schema_name, response_type = get_response_body_name_and_type(
                 self.openapi_spec, operation
             )
             print(f"Main response schema name: {main_response_schema_name}")
             print(f"Response type: {response_type}")
+
             if not main_response_schema_name:
                 response_schema_structure = response_type
             else:
@@ -526,14 +535,22 @@ class VerificationScriptGenerator:
                         f"array of {main_response_schema_name} objects"
                     )
 
+            # Prepare response schema specification
             response_schema_specification = ""
             if main_response_schema_name:
-                response_schema_specification = f"- Data structure of the response body: {response_schema_structure}\n- Specification of {main_response_schema_name} object: {json.dumps(response_specification)}"
+                response_schema_specification = (
+                    f"- Data structure of the response body: {response_schema_structure}\n"
+                    f"- Specification of {main_response_schema_name} object: {json.dumps(response_specification)}"
+                )
             else:
-                response_schema_specification = f"- Data structure of the response body: {response_schema_structure}\n- Specification: {json.dumps(response_specification)}"
+                response_schema_specification = (
+                    f"- Data structure of the response body: {response_schema_structure}\n"
+                    f"- Specification: {json.dumps(response_specification)}"
+                )
 
             print(f"Response schema specification: {response_schema_specification}")
 
+            # Extract additional attribute specifications
             attribute_spec = self.simplified_schemas.get(response_resource, {}).get(
                 attribute, ""
             )
@@ -546,6 +563,7 @@ class VerificationScriptGenerator:
                 .get("properties", {})
                 .get(attribute, "")
             )
+
             if not attribute_spec:
                 attribute_spec = (
                     self.openapi_spec.get("definitions", {})
@@ -557,24 +575,26 @@ class VerificationScriptGenerator:
             if attribute_spec:
                 other_description = yaml.dump(attribute_spec)
 
-            corresponding_operation = corresponding_operation[0]
-            cor_operation, path = corresponding_operation.split("-", 1)
+            # Extract parameter information
+            operation_id = corresponding_operation[0]
+            cor_operation, path = operation_id.split("-", 1)
             print(
                 f"Finding parameter constraints for {corresponding_attribute} in {cor_operation} in corresponding part {corresponding_part} - {path}"
             )
+
             parameters = (
                 self.openapi_spec.get("paths", {})
                 .get(path, {})
                 .get(cor_operation, {})
                 .get(corresponding_part, {})
             )
+
+            parameter_spec = ""
             if corresponding_part == "parameters":
-                parameter_spec = {}
                 for parameter in parameters:
                     if parameter["name"] == corresponding_attribute:
                         parameter_spec = yaml.dump(parameter)
                         break
-
             elif corresponding_part == "requestBody":
                 parameter_spec = (
                     parameters.get("content", {})
@@ -593,12 +613,14 @@ class VerificationScriptGenerator:
                     )
                 parameter_spec = yaml.dump(parameter_spec)
 
+            # Prepare attribute information
             attribute_information = ""
             if other_description:
                 attribute_information = f"-Corresponding attribute {attribute}\n- Description: {other_description}"
             else:
                 attribute_information = f"- Corresponding attribute: {attribute}"
 
+            # Generate verification script
             python_verification_script_generation_prompt = (
                 CONST_RESPONSEBODY_PARAM_SCRIPT_GEN_PROMPT.format(
                     parameter=corresponding_attribute,
@@ -609,68 +631,50 @@ class VerificationScriptGenerator:
                 )
             )
 
+            # Log prompt to file
             export_file(
                 python_verification_script_generation_prompt,
                 "python_verification_script_response",
                 f"constraint_{index}.txt",
             )
-            print(python_verification_script_generation_prompt)
-            # input(f"{index} - Press Enter to continue...")
 
-            python_verification_script_response = GPTChatCompletion(
+            print(python_verification_script_generation_prompt)
+
+            # Call LLM to generate the verification script
+            python_verification_script_response = llm_chat_completion(
                 python_verification_script_generation_prompt, model="gpt-4-turbo"
             )
+
+            # Extract the Python code from the response
             python_verification_script = extract_python_code(
                 python_verification_script_response
             )
-            # script_string, status = execute_request_parameter_constraint_verification_script(python_verification_script, row['API response'], row['request information'])
+
+            # Update the arrays with results
             verification_scripts[index] = python_verification_script
-            # executable_scripts[index] = script_string
             statuses[index] = "unknown"
 
-            # generating_script["verification_script"] = python_verification_script
-            # generating_script["executable_script"] = script_string
-            # generating_script["status"] = status
+            # Create a result object and add to tracking
+            result = RequestResponseVerificationResult(
+                operation=operation,
+                response_resource=response_resource,
+                attribute=attribute,
+                description=description,
+                corresponding_operation=corresponding_operation[0],
+                corresponding_attribute=corresponding_attribute,
+                corresponding_description=corresponding_description,
+                verification_script=python_verification_script,
+                executable_script="",
+                status="unknown",
+                confirmation="",
+                revised_script="",
+                revised_executable_script="",
+                revised_status="",
+            )
 
-            # self.generated_verification_scripts_responsebody_input_parameter.append(generating_script)
+            self.generated_verification_scripts.append(result)
 
-            # # Confirm the generated script
-            # python_verification_script_confirm_prompt = CONST_RESPONSEBODY_PARAM_SCRIPT_CONFIRM_PROMPT.format(
-            #     parameter = corresponding_attribute,
-            #     parameter_description = corresponding_description,
-            #     response_schema_specification = response_schema_specification,
-            #     attribute_information = attribute_information,
-            #     attribute = attribute,
-            #     generated_verification_script = python_verification_script
-            # )
-
-            # confirmation_response = GPTChatCompletion(python_verification_script_confirm_prompt, model="gpt-4-turbo")
-            # export_file(python_verification_script_confirm_prompt, confirmation_response, f"constraint_{index}.txt")
-            # # input("Press Enter to continue...")
-
-            # firstline = confirmation_response.split("\n")[0]
-
-            # if "yes" in firstline:
-            #     confirmations[index] = "yes"
-            # else:
-            #     confirmation_answer = "no"
-
-            #     revised_script = extract_python_code(confirmation_response)
-            #     revised_script = unescape_string(revised_script)
-
-            #     confirmations[index] = confirmation_answer
-            #     revised_scripts[index] = revised_script
-
-            #     revised_script_string, revised_status = execute_request_parameter_constraint_verification_script(revised_script, row['API response'], row['request information'])
-
-            #     revised_script_statuses[index] = revised_status
-            #     revised_executable_scripts[index] = revised_script_string
-
-            #     generating_script["confirmation"] = confirmation_answer
-            #     generating_script["revised_script"] = revised_script
-            #     generating_script["revised_executable_script"] = revised_script_string
-            #     generating_script["revised_status"] = revised_status
-
+            # Update the dataframe with new values
             self.request_response_constraints_df["verification script"] = pd.array(
                 verification_scripts
             )
@@ -678,7 +682,6 @@ class VerificationScriptGenerator:
                 executable_scripts
             )
             self.request_response_constraints_df["status"] = pd.array(statuses)
-
             self.request_response_constraints_df["script confirmation"] = pd.array(
                 confirmations
             )
@@ -692,14 +695,18 @@ class VerificationScriptGenerator:
                 revised_script_statuses
             )
 
+            # Save the dataframe after each iteration
             self.request_response_constraints_df.to_excel(
                 self.request_response_constraints_file, sheet_name="Sheet1", index=False
             )
 
 
-if __name__ == "__main__":
-    # service_names = ["GitLab Groups", "GitLab Issues", "GitLab Project", "GitLab Repository",]
-    service_names = [
+def main() -> None:
+    """
+    Main function to run the verification script generation for multiple services.
+    """
+    # Define the list of service names to process
+    service_names: List[str] = [
         "GitLab Groups",
         "GitLab Issues",
         "GitLab Project",
@@ -707,37 +714,44 @@ if __name__ == "__main__":
         "GitLab Branch",
         "GitLab Commit",
     ]
-    experiment_dir = "approaches/new_method_our_data copy 2"
-    excel_file_name = [
+
+    # Define the experiment directory and file names
+    experiment_dir: str = "approaches/new_method_our_data copy 2"
+    excel_file_names: List[str] = [
         "request_response_constraints.xlsx",
         "response_property_constraints.xlsx",
     ]
 
+    # Process each service
     for service_name in service_names:
-        # try:
-        response_property_constraints_file = (
-            f"{experiment_dir}/{service_name} API/{excel_file_name[1]}"
-        )
-        request_response_constraints_file = (
-            f"{experiment_dir}/{service_name} API/{excel_file_name[0]}"
-        )
-
-        # if os.path.exists(response_property_constraints_file):
-        #     VerificationScriptGenerator(service_name, experiment_dir, response_property_constraints_file=response_property_constraints_file)
-
-        if os.path.exists(request_response_constraints_file):
-            VerificationScriptGenerator(
-                service_name,
-                experiment_dir,
-                request_response_constraints_file=request_response_constraints_file,
+        try:
+            # Define file paths
+            response_property_constraints_file = (
+                f"{experiment_dir}/{service_name} API/{excel_file_names[1]}"
             )
-        else:
-            print(f"File {request_response_constraints_file} does not exist")
+            request_response_constraints_file = (
+                f"{experiment_dir}/{service_name} API/{excel_file_names[0]}"
+            )
 
-        with open(f"LOG.txt", "a") as file:
-            file.write(f"Successfully processed {service_name}\n")
+            # Process request-response constraints if file exists
+            if os.path.exists(request_response_constraints_file):
+                generator = VerificationScriptGenerator(
+                    service_name,
+                    experiment_dir,
+                    request_response_constraints_file=request_response_constraints_file,
+                )
+            else:
+                print(f"File {request_response_constraints_file} does not exist")
 
-    # except Exception as e:
-    #     print(f"Error processing {service_name}: {e}")
-    #     with open(f"LOG.txt", "a") as file:
-    #         file.write(f"Error processing {service_name}: {e}\n")
+            # Log successful processing
+            with open("LOG.txt", "a") as file:
+                file.write(f"Successfully processed {service_name}\n")
+
+        except Exception as e:
+            print(f"Error processing {service_name}: {e}")
+            with open("LOG.txt", "a") as file:
+                file.write(f"Error processing {service_name}: {e}\n")
+
+
+if __name__ == "__main__":
+    main()

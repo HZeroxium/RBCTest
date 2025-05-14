@@ -21,7 +21,7 @@ from utils.openapi_utils import (
     get_simplified_schema,
     get_relevant_schemas_of_operation,
 )
-from utils.gptcall import GPTChatCompletion
+from utils.llm_utils import llm_chat_completion
 from utils.text_extraction import extract_data_model_key_pairs
 from constant import FIND_SCHEMA_KEYS, DATA_MODEL_PROMPT
 
@@ -213,7 +213,7 @@ class DataModelBuilder:
             )
 
             # Get response from GPT
-            response = GPTChatCompletion(prompt, system="")
+            response = llm_chat_completion(prompt, system="")
 
             if response:
                 # Parse the keys from the response
@@ -264,7 +264,7 @@ class DataModelBuilder:
                 )
 
                 # Get response from GPT
-                data_model_response = GPTChatCompletion(
+                data_model_response = llm_chat_completion(
                     data_model_prompt, system="", temperature=0.0
                 )
 

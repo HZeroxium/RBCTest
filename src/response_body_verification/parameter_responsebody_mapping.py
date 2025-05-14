@@ -24,7 +24,7 @@ from utils.openapi_utils import (
     simplify_openapi,
     get_relevant_schemas_of_operation,
 )
-from utils.gptcall import GPTChatCompletion
+from utils.llm_utils import llm_chat_completion
 from utils.text_extraction import extract_answer, extract_coresponding_attribute
 from utils.schema_utils import (
     standardize_string,
@@ -409,7 +409,7 @@ class ParameterResponseMapper:
                                 description=description,
                             )
 
-                            parameter_observation_response = GPTChatCompletion(
+                            parameter_observation_response = llm_chat_completion(
                                 parameter_observation_prompt, model="gpt-4-turbo"
                             )
 
@@ -419,7 +419,7 @@ class ParameterResponseMapper:
                                 specification=json.dumps(filtered_attr_schema),
                             )
 
-                            schema_observation_response = GPTChatCompletion(
+                            schema_observation_response = llm_chat_completion(
                                 schema_observation_prompt, model="gpt-4-turbo"
                             )
 
@@ -435,7 +435,7 @@ class ParameterResponseMapper:
                                 attributes=[attr for attr in filtered_attr_schema],
                             )
 
-                            mapping_attribute_to_schema_response = GPTChatCompletion(
+                            mapping_attribute_to_schema_response = llm_chat_completion(
                                 mapping_attribute_to_schema_prompt, model="gpt-4-turbo"
                             )
 
@@ -471,7 +471,7 @@ class ParameterResponseMapper:
                                 corresponding_attribute=corresponding_attribute,
                             )
 
-                            mapping_confirmation_response = GPTChatCompletion(
+                            mapping_confirmation_response = llm_chat_completion(
                                 mapping_confirmation_prompt, model="gpt-4-turbo"
                             )
                             mapping_status = extract_answer(
@@ -693,7 +693,7 @@ class ParameterResponseMapper:
                                 )
                             )
 
-                            mapping_attribute_to_schema_response = GPTChatCompletion(
+                            mapping_attribute_to_schema_response = llm_chat_completion(
                                 mapping_attribute_to_schema_prompt, model="gpt-4-turbo"
                             )
 

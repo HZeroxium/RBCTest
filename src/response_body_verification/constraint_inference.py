@@ -23,7 +23,7 @@ from utils.openapi_utils import (
     get_relevent_response_schemas_of_operation,
     extract_operations,
 )
-from utils.gptcall import GPTChatCompletion
+from utils.llm_utils import llm_chat_completion
 from utils.text_extraction import (
     extract_variables,
     extract_values,
@@ -331,7 +331,7 @@ class ConstraintExtractor:
                         )
                     )
 
-                    description_observation_response = GPTChatCompletion(
+                    description_observation_response = llm_chat_completion(
                         description_observation_prompt, model="gpt-4-turbo"
                     )
 
@@ -343,7 +343,7 @@ class ConstraintExtractor:
                         description_observation=description_observation_response,
                     )
 
-                    constraint_confirmation_response = GPTChatCompletion(
+                    constraint_confirmation_response = llm_chat_completion(
                         constraint_confirmation_prompt, model="gpt-4-turbo"
                     )
 
@@ -652,7 +652,7 @@ class ConstraintExtractor:
                     )
                 )
 
-                constraint_confirmation_response = GPTChatCompletion(
+                constraint_confirmation_response = llm_chat_completion(
                     constraint_confirmation_prompt, model="gpt-4-turbo"
                 )
 
@@ -796,7 +796,7 @@ class ConstraintExtractor:
                 )
                 print(f"Observing schema: {schema} - attribute: {parameter_name}")
 
-                description_observation_response = GPTChatCompletion(
+                description_observation_response = llm_chat_completion(
                     description_observation_prompt, model="gpt-4-turbo"
                 )
 
@@ -816,7 +816,7 @@ class ConstraintExtractor:
                 )
 
                 print(f"Confirming schema: {schema} - attribute: {parameter_name}")
-                constraint_confirmation_response = GPTChatCompletion(
+                constraint_confirmation_response = llm_chat_completion(
                     constraint_confirmation_prompt, model="gpt-4-turbo"
                 )
                 confirmation = extract_answer(constraint_confirmation_response)
